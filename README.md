@@ -2,6 +2,10 @@
 
 A web application for sharing files and text between two devices without account or pervious contact.
 
+## Why I did this
+When I use a PC I do not trust (like a shool pc with an outdated wersion of windows and a diabled antivirus (for some reason I still have not figured out)) I do not want to plug in any USB sticḱ or open my password manager which is problematic since my passwords are 10+ characters long and randomly generated. I often resolve to typing them by hand, which is annoying.
+Now, I can simply open up this website and scan the qr code to transfer anytnhing from my phne to the PC.
+
 ## Features
 
 ### Security
