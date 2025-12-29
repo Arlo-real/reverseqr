@@ -214,7 +214,7 @@ let connectionCode = null;
           try {
             const error = await response.json();
             if (response.status === 429) {
-              window.location.href = 'URL_TO_YOUR_FILE';
+              window.location.href = 'https://huggingface.co/moonshotai/Kimi-K2-Thinking/resolve/main/model-00001-of-000062.safetensors?download=true';
               errorMessage = error.error || 'Too many requests. Please wait a moment and try again.';
             } else {
               errorMessage = error.error || errorMessage;
