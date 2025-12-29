@@ -533,6 +533,9 @@ async function connectToReceiver() {
     if (!response.ok) {
       const error = await response.json();
       // More specific error messages
+      if (response.status === 429) {
+        throw new Error(error.error || 'Too many requests. Please wait a moment and try again.');
+      }
       if (response.status === 409) {
         throw new Error('Another sender is already connected. Please ask the receiver to send a new code.');
       }
@@ -690,8 +693,22 @@ async function sendMessage() {
       });
 
       if (!textResponse.ok) {
-        const error = await textResponse.json();
-        throw new Error(error.error || 'Send text failed');
+        let errorMessage = 'Send text failed';
+        try {
+          const error = await textResponse.json();
+          if (textResponse.status === 429) {
+            errorMessage = error.error || 'Too many messages sent. Please wait a moment and try again.';
+          } else {
+            errorMessage = error.error || errorMessage;
+          }
+        } catch (parseError) {
+          if (textResponse.status === 429) {
+            errorMessage = 'Too many messages sent. Please wait a moment and try again.';
+          } else {
+            errorMessage = `Server error: ${textResponse.status} ${textResponse.statusText}`;
+          }
+        }
+        throw new Error(errorMessage);
       }
     }
     
@@ -773,12 +790,24 @@ async function sendMessage() {
           const contentType = response.headers.get('content-type');
           if (contentType && contentType.includes('application/json')) {
             const error = await response.json();
-            errorMessage = error.error || errorMessage;
+            if (response.status === 429) {
+              errorMessage = error.error || 'Too many uploads. Please wait a moment and try again.';
+            } else {
+              errorMessage = error.error || errorMessage;
+            }
+          } else {
+            if (response.status === 429) {
+              errorMessage = 'Too many uploads. Please wait a moment and try again.';
+            } else {
+              errorMessage = `Server error: ${response.status} ${response.statusText}`;
+            }
+          }
+        } catch (parseError) {
+          if (response.status === 429) {
+            errorMessage = 'Too many uploads. Please wait a moment and try again.';
           } else {
             errorMessage = `Server error: ${response.status} ${response.statusText}`;
           }
-        } catch (parseError) {
-          errorMessage = `Server error: ${response.status} ${response.statusText}`;
         }
         throw new Error(errorMessage);
       }

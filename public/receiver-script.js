@@ -120,6 +120,16 @@ let connectionCode = null;
 
       try {
         const response = await fetch(`/api/message/retrieve/${connectionCode}`);
+
+        if (!response.ok) {
+          if (response.status === 429) {
+            console.warn('Rate limited when fetching messages, will retry later');
+          } else {
+            console.error('Error fetching messages:', response.status, response.statusText);
+          }
+          return;
+        }
+
         const data = await response.json();
 
         if (data.messages && data.messages.length > 0) {
@@ -198,6 +208,26 @@ let connectionCode = null;
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ initiatorDhPublicKey: ourPublicKeyHex })
         });
+
+        if (!response.ok) {
+          let errorMessage = 'Failed to create session';
+          try {
+            const error = await response.json();
+            if (response.status === 429) {
+              errorMessage = error.error || 'Too many requests. Please wait a moment and try again.';
+            } else {
+              errorMessage = error.error || errorMessage;
+            }
+          } catch (parseError) {
+            if (response.status === 429) {
+              errorMessage = 'Too many requests. Please wait a moment and try again.';
+            } else {
+              errorMessage = `Server error: ${response.status} ${response.statusText}`;
+            }
+          }
+          throw new Error(errorMessage);
+        }
+
         const data = await response.json();
 
         connectionCode = data.code;
@@ -470,7 +500,11 @@ let connectionCode = null;
         const response = await fetch(`/api/file/download/${encodeURIComponent(filename)}`);
         
         if (!response.ok) {
-          alert(`Failed to download file: ${response.statusText}`);
+          if (response.status === 429) {
+            alert('Too many download requests. Please wait a moment and try again.');
+          } else {
+            alert(`Failed to download file: ${response.statusText}`);
+          }
           return;
         }
         
