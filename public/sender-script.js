@@ -245,7 +245,7 @@ function renderFilesList() {
     item.className = 'file-item';
     item.innerHTML = `
       <div style="flex: 1;">
-        <div>📄 ${file.name} <span class="file-size">(${formatFileSize(file.size)})</span></div>
+        <div>${file.name} <span class="file-size">(${formatFileSize(file.size)})</span></div>
       </div>
       <button class="remove-file" onclick="removeFile(${idx})">Remove</button>
     `;
@@ -467,7 +467,7 @@ async function completeKeyExchange(dhKeyPair, receiverPublicKeyHex) {
     console.log('keyHashDisplay element found:', !!keyHashDisplay);
     
     if (keyHashDisplay) {
-      keyHashDisplay.innerHTML = `<strong>🔐 Security Fingerprint:</strong><br><span class="key-words">${keyWords}</span>`;
+      keyHashDisplay.innerHTML = `<strong>Security Fingerprint:</strong><br><span class="key-words">${keyWords}</span>`;
       keyHashDisplay.style.display = 'block';
       console.log('Security fingerprint displayed:', keyWords);
     } else {
@@ -476,7 +476,7 @@ async function completeKeyExchange(dhKeyPair, receiverPublicKeyHex) {
 
     const status = document.getElementById('connectionStatus');
     if (status) {
-      status.innerHTML = '<span style="color: #22543d;">✓ Connected to receiver</span>';
+      status.innerHTML = '<span style="color: #22543d;">Connected to receiver</span>';
       status.classList.add('connected');
     }
   } catch (error) {
@@ -499,7 +499,7 @@ async function connectToReceiver() {
     // Disable connect button to prevent double-click
     if (connectBtn) {
       connectBtn.disabled = true;
-      connectBtn.innerHTML = '⏳ Connecting...';
+      connectBtn.innerHTML = 'Connecting...';
     }
 
     // Decode PGP words if needed
@@ -509,7 +509,7 @@ async function connectToReceiver() {
       showError(e.message);
       if (connectBtn) {
         connectBtn.disabled = false;
-        connectBtn.innerHTML = '🔗 Connect';
+        connectBtn.innerHTML = 'Connect';
       }
       return;
     }
@@ -530,12 +530,14 @@ async function connectToReceiver() {
       body: JSON.stringify({ code, responderDhPublicKey: ourPublicKeyHex })
     });
 
+    if (response.status === 429) {
+      await showRateLimitError();
+      return;
+    }
+
     if (!response.ok) {
       const error = await response.json();
       // More specific error messages
-      if (response.status === 429) {
-        throw new Error(error.error || 'Too many requests. Please wait a moment and try again.');
-      }
       if (response.status === 409) {
         throw new Error('Another sender is already connected. Please ask the receiver to send a new code.');
       }
@@ -593,7 +595,7 @@ async function connectToReceiver() {
     const connectBtn = document.getElementById('connectBtn');
     if (connectBtn) {
       connectBtn.disabled = false;
-      connectBtn.innerHTML = '🔗 Connect';
+      connectBtn.innerHTML = 'Connect';
     }
   }
 }
@@ -692,23 +694,14 @@ async function sendMessage() {
         body: textFormData
       });
 
+      if (textResponse.status === 429) {
+        await showRateLimitError();
+        return;
+      }
+
       if (!textResponse.ok) {
-        let errorMessage = 'Send text failed';
-        try {
-          const error = await textResponse.json();
-          if (textResponse.status === 429) {
-            errorMessage = error.error || 'Too many messages sent. Please wait a moment and try again.';
-          } else {
-            errorMessage = error.error || errorMessage;
-          }
-        } catch (parseError) {
-          if (textResponse.status === 429) {
-            errorMessage = 'Too many messages sent. Please wait a moment and try again.';
-          } else {
-            errorMessage = `Server error: ${textResponse.status} ${textResponse.statusText}`;
-          }
-        }
-        throw new Error(errorMessage);
+        const error = await textResponse.json();
+        throw new Error(error.error || 'Send text failed');
       }
     }
     
@@ -784,36 +777,29 @@ async function sendMessage() {
         body: formData
       });
 
+      if (response.status === 429) {
+        await showRateLimitError();
+        return;
+      }
+
       if (!response.ok) {
         let errorMessage = 'Send files failed';
         try {
           const contentType = response.headers.get('content-type');
           if (contentType && contentType.includes('application/json')) {
             const error = await response.json();
-            if (response.status === 429) {
-              errorMessage = error.error || 'Too many uploads. Please wait a moment and try again.';
-            } else {
-              errorMessage = error.error || errorMessage;
-            }
-          } else {
-            if (response.status === 429) {
-              errorMessage = 'Too many uploads. Please wait a moment and try again.';
-            } else {
-              errorMessage = `Server error: ${response.status} ${response.statusText}`;
-            }
-          }
-        } catch (parseError) {
-          if (response.status === 429) {
-            errorMessage = 'Too many uploads. Please wait a moment and try again.';
+            errorMessage = error.error || errorMessage;
           } else {
             errorMessage = `Server error: ${response.status} ${response.statusText}`;
           }
+        } catch (parseError) {
+          errorMessage = `Server error: ${response.status} ${response.statusText}`;
         }
         throw new Error(errorMessage);
       }
     }
 
-    showSuccess('Message sent securely! ✓');
+    showSuccess('Message sent securely!');
     
     // Add to sent messages history
     if (text) {
@@ -851,11 +837,11 @@ async function sendMessage() {
     renderFilesList();
 
     sendBtn.disabled = false;
-    sendBtn.innerHTML = '✈️ Send Securely';
+    sendBtn.innerHTML = 'Send Securely';
   } catch (error) {
     showError('Send failed: ' + error.message);
     document.getElementById('sendBtn').disabled = false;
-    document.getElementById('sendBtn').innerHTML = '✈️ Send Securely';
+    document.getElementById('sendBtn').innerHTML = 'Send Securely';
     console.error(error);
   }
 }
@@ -867,7 +853,7 @@ function displaySentMessages() {
     return;
   }
   
-  messagesList.innerHTML = '<div class="sent-messages-title">📤 Sent Messages</div>';
+  messagesList.innerHTML = '<div class="sent-messages-title">Sent Messages</div>';
   
   // Display messages in reverse order (newest first)
   [...sentMessages].reverse().forEach((msg, idx) => {
@@ -876,17 +862,17 @@ function displaySentMessages() {
     
     if (msg.type === 'text' && msg.text) {
       msgDiv.innerHTML = `
-        <div class="message-type">📝 Text</div>
+        <div class="message-type">Text</div>
         <div class="message-content">${escapeHtml(msg.text)}</div>
       `;
     } else if (msg.files && msg.files.length > 0) {
       const filesHtml = msg.files.map(f => `
         <div class="sent-file">
-          <div>📄 ${escapeHtml(f.name)} <span class="file-size">(${formatFileSize(f.size)})</span></div>
+          <div>${escapeHtml(f.name)} <span class="file-size">(${formatFileSize(f.size)})</span></div>
         </div>
       `).join('');
       msgDiv.innerHTML = `
-        <div class="message-type">📦 Files</div>
+        <div class="message-type">Files</div>
         <div class="sent-files">${filesHtml}</div>
       `;
     }
@@ -950,6 +936,32 @@ function showError(message) {
   const errorDiv = document.getElementById('error');
   errorDiv.textContent = message;
   errorDiv.style.display = message ? 'block' : 'none';
+}
+
+async function showRateLimitError() {
+  const errorDiv = document.getElementById('error');
+  
+  // Fetch available images and pick one at random
+  let imageSrc = '/429/Calm down you must.png'; // fallback
+  try {
+    const response = await fetch('/api/429-images');
+    const data = await response.json();
+    if (data.images && data.images.length > 0) {
+      const randomImage = data.images[Math.floor(Math.random() * data.images.length)];
+      imageSrc = `/429/${encodeURIComponent(randomImage)}`;
+    }
+  } catch (e) {
+    console.error('Failed to fetch 429 images:', e);
+  }
+  
+  errorDiv.innerHTML = `
+    <div style="text-align: center;">
+      <img src="${imageSrc}" alt="Rate Limited" style="max-width: 300px; margin-bottom: 15px; border-radius: 8px;">
+      <p><strong>Too Many Requests</strong></p>
+      <p>You're being rate limited. Please wait a moment before trying again.</p>
+    </div>
+  `;
+  errorDiv.style.display = 'block';
 }
 
 function showSuccess(message) {

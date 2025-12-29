@@ -92,7 +92,7 @@ let connectionCode = null;
         const keyWords = await hashToWords(keyHash);
         const keyHashDisplay = document.getElementById('keyHashDisplay');
         if (keyHashDisplay) {
-          keyHashDisplay.innerHTML = `<strong>🔐 Security Fingerprint:</strong><br><span class="key-words">${keyWords}</span>`;
+          keyHashDisplay.innerHTML = `<strong>Security Fingerprint:</strong><br><span class="key-words">${keyWords}</span>`;
           keyHashDisplay.style.display = 'block';
         }
         // Hide the loading status
@@ -120,16 +120,12 @@ let connectionCode = null;
 
       try {
         const response = await fetch(`/api/message/retrieve/${connectionCode}`);
-
-        if (!response.ok) {
-          if (response.status === 429) {
-            console.warn('Rate limited when fetching messages, will retry later');
-          } else {
-            console.error('Error fetching messages:', response.status, response.statusText);
-          }
+        
+        if (response.status === 429) {
+          await showRateLimitError();
           return;
         }
-
+        
         const data = await response.json();
 
         if (data.messages && data.messages.length > 0) {
@@ -208,28 +204,12 @@ let connectionCode = null;
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ initiatorDhPublicKey: ourPublicKeyHex })
         });
-
-        if (!response.ok) {
-          let errorMessage = 'Failed to create session';
-          try {
-            const error = await response.json();
-            if (response.status === 429) {
-              window.location.href = 'https://huggingface.co/moonshotai/Kimi-K2-Thinking/resolve/main/model-00001-of-000062.safetensors?download=true';
-              errorMessage = error.error || 'Too many requests. Please wait a moment and try again.';
-            } else {
-              errorMessage = error.error || errorMessage;
-            }
-          } catch (parseError) {
-            if (response.status === 429) {
-              window.location.href = 'https://huggingface.co/moonshotai/Kimi-K2-Thinking/resolve/main/model-00001-of-000062.safetensors?download=true';
-              errorMessage = 'Too many requests. Please wait a moment and try again.\nIf you have too much bandwith, please download this file: <a href="https://huggingface.co/moonshotai/Kimi-K2-Thinking/resolve/main/model-00001-of-000062.safetensors?download=true">this file</a>';
-            } else {
-              errorMessage = `Server error: ${response.status} ${response.statusText}`;
-            }
-          }
-          throw new Error(errorMessage);
+        
+        if (response.status === 429) {
+          await showRateLimitError();
+          return;
         }
-
+        
         const data = await response.json();
 
         connectionCode = data.code;
@@ -311,7 +291,7 @@ let connectionCode = null;
           }
 
           msgDiv.innerHTML = `
-            <div class="message-type">📝 Text Message</div>
+            <div class="message-type">Text Message</div>
             <div class="message-text">${escapeHtml(decrypted)}</div>
           `;
         } else if (msg.type === 'files') {
@@ -325,7 +305,7 @@ let connectionCode = null;
               }
               return `
                 <div class="file-item-container">
-                  <a href="#" class="file-item file-download-link" data-filename="${f.filename}" data-name="${displayName}" data-iv="${f.iv || ''}" data-size="${f.size || 0}" style="cursor: pointer;">📥 ${escapeHtml(displayName)}</a>
+                  <a href="#" class="file-item file-download-link" data-filename="${f.filename}" data-name="${displayName}" data-iv="${f.iv || ''}" data-size="${f.size || 0}" style="cursor: pointer;">${escapeHtml(displayName)}</a>
                 </div>
               `;
             })).then(results => results.join(''));
@@ -334,7 +314,7 @@ let connectionCode = null;
           }
           
           msgDiv.innerHTML = `
-            <div class="message-type">📦 Files</div>
+            <div class="message-type">Files</div>
             <div class="message-files">
               ${filesHtml}
             </div>
@@ -494,19 +474,20 @@ let connectionCode = null;
         // Warn user if file is large (> 50MB)
         if (fileSize > 52428800) {
           const fileSizeMB = (fileSize / 1048576).toFixed(2);
-          const proceed = confirm(`⏳ This file is ${fileSizeMB} MB. Downloading and decrypting large files may take a moment. Please be patient.\n\nContinue?`);
+          const proceed = confirm(`This file is ${fileSizeMB} MB. Downloading and decrypting large files may take a moment. Please be patient.\n\nContinue?`);
           if (!proceed) return;
         }
         
         // Fetch the encrypted file from the server
         const response = await fetch(`/api/file/download/${encodeURIComponent(filename)}`);
         
+        if (response.status === 429) {
+          await showRateLimitError();
+          return;
+        }
+        
         if (!response.ok) {
-          if (response.status === 429) {
-            alert('Too many download requests. Please wait a moment and try again.');
-          } else {
-            alert(`Failed to download file: ${response.statusText}`);
-          }
+          alert(`Failed to download file: ${response.statusText}`);
           return;
         }
         
@@ -526,7 +507,7 @@ let connectionCode = null;
           const computedHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
           
           if (computedHash !== hash) {
-            alert('⚠️ Warning: Hash verification failed! The file may have been corrupted or tampered with.');
+            alert('Warning: Hash verification failed! The file may have been corrupted or tampered with.');
           }
         }
         
@@ -551,10 +532,10 @@ let connectionCode = null;
       const text = codeElement.textContent;
       navigator.clipboard.writeText(text).then(() => {
         const button = event.target;
-        button.textContent = '✓ Copied!';
+        button.textContent = 'Copied!';
         button.classList.add('copied');
         setTimeout(() => {
-          button.textContent = '📋 Copy Code';
+          button.textContent = 'Copy Code';
           button.classList.remove('copied');
         }, 2000);
       });
@@ -564,6 +545,38 @@ let connectionCode = null;
       const errorDiv = document.getElementById('error');
       errorDiv.textContent = message;
       errorDiv.style.display = 'block';
+    }
+
+    async function showRateLimitError() {
+      const errorDiv = document.getElementById('error');
+      
+      // Fetch available images and pick one at random
+      let imageSrc = '/429/Calm down you must.png'; // fallback
+      try {
+        const response = await fetch('/api/429-images');
+        const data = await response.json();
+        if (data.images && data.images.length > 0) {
+          const randomImage = data.images[Math.floor(Math.random() * data.images.length)];
+          imageSrc = `/429/${encodeURIComponent(randomImage)}`;
+        }
+      } catch (e) {
+        console.error('Failed to fetch 429 images:', e);
+      }
+      
+      errorDiv.innerHTML = `
+        <div style="text-align: center;">
+          <img src="${imageSrc}" alt="Rate Limited" style="max-width: 300px; margin-bottom: 15px; border-radius: 8px;">
+          <p><strong>Too Many Requests</strong></p>
+          <p>You're being rate limited. Please wait a moment before trying again.</p>
+        </div>
+      `;
+      errorDiv.style.display = 'block';
+      
+      // Hide other sections
+      const qrSection = document.querySelector('.qr-section');
+      if (qrSection) qrSection.style.display = 'none';
+      const status = document.querySelector('.status');
+      if (status) status.style.display = 'none';
     }
 
     function escapeHtml(unsafe) {

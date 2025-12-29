@@ -104,7 +104,11 @@ const globalDdosLimiter = rateLimit({
   message: { error: 'Server is under heavy load, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => 'global'  // All requests share same key
+  keyGenerator: (req) => 'global',  // All requests share same key
+  handler: (req, res, next, options) => {
+    log('RATE_LIMIT', `Global DDoS limit exceeded - Path: ${req.path}, IP: ${req.ip}`);
+    res.status(429).json(options.message);
+  }
 });
 
 // General rate limiter for all API endpoints
@@ -117,6 +121,10 @@ const generalLimiter = rateLimit({
   skip: (req) => {
     // Skip rate limiting for static files
     return !req.path.startsWith('/api/');
+  },
+  handler: (req, res, next, options) => {
+    log('RATE_LIMIT', `General API limit exceeded - Path: ${req.path}, IP: ${req.ip}`);
+    res.status(429).json(options.message);
   }
 });
 
@@ -126,7 +134,11 @@ const sessionLimiter = rateLimit({
   max: SESSION_RATE_LIMIT_MAX,
   message: { error: 'Too many sessions created, please try again later.' },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  handler: (req, res, next, options) => {
+    log('RATE_LIMIT', `Session creation limit exceeded - IP: ${req.ip}`);
+    res.status(429).json(options.message);
+  }
 });
 
 // Strictest rate limiter for file uploads
@@ -135,7 +147,11 @@ const uploadLimiter = rateLimit({
   max: UPLOAD_RATE_LIMIT_MAX,
   message: { error: 'Too many uploads, please try again later.' },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  handler: (req, res, next, options) => {
+    log('RATE_LIMIT', `Upload limit exceeded - IP: ${req.ip}`);
+    res.status(429).json(options.message);
+  }
 });
 
 // Apply global DDoS protection first (before per-IP limits)
@@ -226,11 +242,11 @@ function cleanupExpiredFiles() {
           // Check if file has active downloads - skip if so
           const downloadCount = activeDownloads.get(filename) || 0;
           if (downloadCount > 0) {
-            console.log(`⏳ Skipping deletion of ${filename} - ${downloadCount} active download(s)`);
+            console.log(`Skipping deletion of ${filename} - ${downloadCount} active download(s)`);
           } else {
             fs.unlinkSync(filepath);
             uploadedFiles.delete(filename); // Also remove from map if present
-            console.log(`✓ Deleted expired file: ${filename} (age: ${Math.round(fileAge / 1000 / 60)} min)`);
+            console.log(`Deleted expired file: ${filename} (age: ${Math.round(fileAge / 1000 / 60)} min)`);
             deletedCount++;
           }
         }
@@ -242,7 +258,7 @@ function cleanupExpiredFiles() {
     });
     
     if (deletedCount > 0) {
-      console.log(`🧹 Cleanup complete: deleted ${deletedCount} expired file(s)`);
+      console.log(`Cleanup complete: deleted ${deletedCount} expired file(s)`);
     }
   } catch (err) {
     console.error('Error during cleanup:', err.message);
@@ -250,7 +266,7 @@ function cleanupExpiredFiles() {
 }
 
 // Run cleanup on startup to clean up files from previous sessions
-console.log('🧹 Running initial cleanup of expired files...');
+console.log('Running initial cleanup of expired files...');
 cleanupExpiredFiles();
 
 // Start cleanup timer for recurring cleanup
@@ -671,6 +687,53 @@ app.get('/api/config', (req, res) => {
     sessionTimeout: SESSION_TIMEOUT_MS,
     fileRetention: FILE_RETENTION_TIME
   });
+});
+
+/**
+ * API: Get list of 429 rate limit images
+ */
+app.get('/api/429-images', (req, res) => {
+  const imagesDir = path.join(__dirname, '../public/429');
+  try {
+    const files = fs.readdirSync(imagesDir);
+    const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+    const images = files.filter(file => {
+      const ext = path.extname(file).toLowerCase();
+      return imageExtensions.includes(ext);
+    });
+    res.json({ images });
+  } catch (error) {
+    res.json({ images: [] });
+  }
+});
+
+/**
+ * API: Get list of 404 images
+ */
+app.get('/api/404-images', (req, res) => {
+  const imagesDir = path.join(__dirname, '../public/404');
+  try {
+    const files = fs.readdirSync(imagesDir);
+    const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+    const images = files.filter(file => {
+      const ext = path.extname(file).toLowerCase();
+      return imageExtensions.includes(ext);
+    });
+    res.json({ images });
+  } catch (error) {
+    res.json({ images: [] });
+  }
+});
+
+// ============ 404 HANDLER ============
+
+// Catch-all route for 404 - must be after all other routes
+app.use((req, res, next) => {
+  // Only serve 404 page for non-API routes
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'Endpoint not found' });
+  }
+  res.status(404).sendFile(path.join(__dirname, '../public/404.html'));
 });
 
 // ============ ERROR HANDLING ============
