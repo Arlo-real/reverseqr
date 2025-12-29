@@ -10,7 +10,7 @@ Now, I can simply open up this website and scan the QR code to transfer anything
 ## Features
 
 ### Security
-- **End-to-end encryption**: The server does not see what is being send (only the size)
+- **End-to-end encryption**: The server does not see what is being sent (only the size)
 - **No Data Retention**: Files get deleted shortly after upload (default: 30 minutes)
 
 ### Privacy
@@ -18,13 +18,13 @@ Now, I can simply open up this website and scan the QR code to transfer anything
 - Sessions expire after a short amount of time (15 min by default)
 - All data deleted shortly after upload (30 min by default)
 
-### Easy use: two way of transmitting the connection code
+### Easy use: two ways of transmitting the connection code
 - **QR Code**: Receiver displays QR code, sender scans it
 - **Human-Readable Codes**: PGP wordlist encoding for easy verbal transmission
 
 ### A simple but powerful tool:
-- Text Message and File transfer 
-- A sleek, Modern, responsive web interface
+- Text message and file transfer 
+- A sleek, modern, responsive web interface
 - No installation or configuration required by clients (all in browser)
 
 
@@ -61,7 +61,7 @@ Now, I can simply open up this website and scan the QR code to transfer anything
 - **Algorithm**: AES-256-GCM (Galois/Counter Mode)
 - **Key Size**: 256 bits
 - **IV**: 16 random bytes per message
-- **3 word code** derived from encryption key to spot man in the middle attacks
+- **3-word code** derived from encryption key to spot man-in-the-middle attacks
 
 
 ## Deployment:
@@ -154,7 +154,7 @@ GPL 3.0 License - See LICENSE file for details
 
 Contributions are welcome! Please feel free to submit issues or pull requests.
 
-## Support
+## Basic troubleshooting
 
 For issues or questions:
 1. Check the SETUP.md for deployment details
