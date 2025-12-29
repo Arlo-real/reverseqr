@@ -16,8 +16,8 @@ Now, I can simply open up this website and scan the qr code to transfer anytnhin
 
 
 ### Easy use
-1. **QR Code**: Receiver displays QR code, sender scans it
-2. **Human-Readable Codes**: PGP wordlist encoding for easy verbal transmission
+- **QR Code**: Receiver displays QR code, sender scans it
+- **Human-Readable Codes**: PGP wordlist encoding for easy verbal transmission
 
 ### A sumple but powerful tool:
 - Text Message and File transfer 
