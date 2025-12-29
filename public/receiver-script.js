@@ -100,6 +100,11 @@ let connectionCode = null;
         if (status) {
           status.style.display = 'none';
         }
+        // Hide the QR code, connection code, and link after successful connection
+        const qrSection = document.querySelector('.qr-section');
+        if (qrSection) {
+          qrSection.style.display = 'none';
+        }
       } catch (hashError) {
         console.error('Error displaying key hash:', hashError);
       }
