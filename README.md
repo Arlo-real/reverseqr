@@ -10,13 +10,15 @@ Now, I can simply open up this website and scan the QR code to transfer anything
 ## Features
 
 ### Security
-
-- **Diffie-Hellman Key Exchange**: Secure key establishment without pre-shared secrets
-- **AES-256-GCM Encryption**: Encryption for all data
+- **End-to-end encryption**: The server does not see what is being send (only the size)
 - **No Data Retention**: Files get deleted shortly after upload (default: 30 minutes)
 
+### Privacy
+- No user tracking (no cookies, no browser fingerprinting, no nothing)
+- Sessions expire after a short amount of time (15 min by default)
+- All data deleted shortly after upload (30 min by default)
 
-### Easy use: two way of transmitting
+### Easy use: two way of transmitting the connection code
 - **QR Code**: Receiver displays QR code, sender scans it
 - **Human-Readable Codes**: PGP wordlist encoding for easy verbal transmission
 
@@ -26,8 +28,13 @@ Now, I can simply open up this website and scan the QR code to transfer anything
 - No installation or configuration required by clients (all in browser)
 
 
+## Limitations
+- High RAM usage for the sender and receiver
+- A malicious server admin could replace the normal webpage with one that does not encrypt the data and the user would not be able to notice
 
-### How to use?
+
+
+## How to use?
 
 **For Receiver:**
 1. Open http://localhost:3000/
@@ -57,10 +64,10 @@ Now, I can simply open up this website and scan the QR code to transfer anything
 - **3 word code** derived from encryption key to spot man in the middle attacks
 
 
-## Deployment
+## Deployment:
 
 
-## Quick Start (for testing with localhost)
+### Quick Start (for testing with localhost)
 
 > [!IMPORTANT]
 > Reverseqr uses the crypto.sublte in the browser, which is only available in a secure context (localhost or https) therefore, the whole app will not work correctly if this is not the case (for example when testing using a second device on the same network).
