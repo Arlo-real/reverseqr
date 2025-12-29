@@ -4,7 +4,7 @@ A web application for sharing files and text between two devices without account
 Try it [here](https://reverseqr.qzz.io/) (uptime not guaranteed)
 
 ## Why I did this
-When I use a PC I do not trust (like a school PC with an outdated version of Windows and a disabled antivirus (for some reason I still have not figured out)) I do not want to plug in any USB stick or open my password manager, which is problematic since my passwords are 10+ characters long and randomly generated. I often resolve to typing them by hand, which is annoying.
+When I use a PC I do not trust (like a school PC with an outdated version of Windows and a disabled antivirus (for some reason I still have not figured out)), I do not want to plug in any USB stick or open my password manager, which is problematic since my passwords are 10+ characters long and randomly generated. I often resolve to typing them by hand, which is annoying.
 Now, I can simply open up this website and scan the QR code to transfer anything from my phone to the PC.
 
 ## Features
