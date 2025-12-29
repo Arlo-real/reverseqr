@@ -1,46 +1,31 @@
 # ReverseQR - Secure File & Text Sharing
 
-A web application for sharing files and text between two devices without account or pervious contact.
+A web application for sharing files and text between two devices without account or previous contact.
+Try it [here](https://reverseqr.qzz.io/) (uptime not guaranteed)
 
 ## Why I did this
-When I use a PC I do not trust (like a shool pc with an outdated wersion of windows and a diabled antivirus (for some reason I still have not figured out)) I do not want to plug in any USB sticḱ or open my password manager which is problematic since my passwords are 10+ characters long and randomly generated. I often resolve to typing them by hand, which is annoying.
-Now, I can simply open up this website and scan the qr code to transfer anytnhing from my phne to the PC.
+When I use a PC I do not trust (like a school PC with an outdated version of Windows and a disabled antivirus (for some reason I still have not figured out)) I do not want to plug in any USB stick or open my password manager, which is problematic since my passwords are 10+ characters long and randomly generated. I often resolve to typing them by hand, which is annoying.
+Now, I can simply open up this website and scan the QR code to transfer anything from my phone to the PC.
 
 ## Features
 
 ### Security
+
 - **Diffie-Hellman Key Exchange**: Secure key establishment without pre-shared secrets
 - **AES-256-GCM Encryption**: Encryption for all data
-- **SHA-256 Hashing**: Automatic integrity verification of the shared secret to detect man in the middle attack
 - **No Data Retention**: Files get deleted shortly after upload (default: 30 minutes)
 
 
-### Easy use
+### Easy use: two way of transmitting
 - **QR Code**: Receiver displays QR code, sender scans it
 - **Human-Readable Codes**: PGP wordlist encoding for easy verbal transmission
 
-### A sumple but powerful tool:
+### A simple but powerful tool:
 - Text Message and File transfer 
 - A sleek, Modern, responsive web interface
-- No installation required on client machines
-- Works on desktop and mobile browsers
-- Zero-configuration for users
+- No installation or configuration required by clients (all in browser)
 
 
-
-## Architecture
-
-### Frontend
-- **Vanilla JavaScript** - No frameworks required
-- **Modern CSS** - Gradient designs and responsive layout
-- **Native Crypto API** - For client-side encryption
-
-
-### Backend
-- **Express.js** - Lightweight HTTP server
-- **Node.js Crypto** - Cryptographic operations
-- **In-Memory Sessions** - Fast session management
-- **Multer** - Secure file handling
 
 ### How to use?
 
@@ -53,7 +38,7 @@ Now, I can simply open up this website and scan the qr code to transfer anytnhin
 1. Scan QR code or open /sender page and enter connection code
 2. Type message and/or upload files
 3. Click "Send Securely"
-4. Sender gets the messages
+4. Receiver gets the messages
 
 
 
@@ -69,7 +54,7 @@ Now, I can simply open up this website and scan the qr code to transfer anytnhin
 - **Algorithm**: AES-256-GCM (Galois/Counter Mode)
 - **Key Size**: 256 bits
 - **IV**: 16 random bytes per message
-- **3 word code** derived from encryption key to spot man in th middle attacks
+- **3 word code** derived from encryption key to spot man in the middle attacks
 
 
 ## Deployment
@@ -78,8 +63,8 @@ Now, I can simply open up this website and scan the qr code to transfer anytnhin
 ## Quick Start (for testing with localhost)
 
 > [!IMPORTANT]
-> Reverseqr uses the crypto.sublte in the browser, which is only available in a secure context (localhost or https) therefore, the whole app will not work correctly if this is not the case (for exaple when testing using a second device on the same network).
-In such condotions, the page will load, but not display any QR code or connection code and not permit any data tranfer this however indicates that the server is working fine
+> Reverseqr uses the crypto.sublte in the browser, which is only available in a secure context (localhost or https) therefore, the whole app will not work correctly if this is not the case (for example when testing using a second device on the same network).
+In such conditions, the page will load, but not display any QR code or connection code and not permit any data transfer. This however indicates that the server is working fine.
 [More info](https://developer.mozilla.org/en-US/docs/Web/API/Crypto/subtle)
 
 ### Installation
@@ -110,7 +95,7 @@ npm start
 Please follow the instructions in SETUP.md
 
 
-## 🛠️ API Endpoints
+## API Endpoints
 
 ### Session Management
 - `POST /api/session/create` - Create receiver session
@@ -132,12 +117,8 @@ Please follow the instructions in SETUP.md
 - `GET /join?code=` - QR redirect
 
 
-## 📈 Performance
 
-
-- **File Handling**: Streaming capable for large files
-
-## 🔍 Monitoring
+## Monitoring
 
 ### Check Status
 ```bash
