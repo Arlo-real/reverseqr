@@ -717,10 +717,9 @@ function formatBytes(bytes) {
 // ============ START SERVER ============
 
 const server = app.listen(PORT, () => {
-  console.log(`🚀 ReverseQR server running at ${BASE_URL}`);
-  console.log(`📊 Receiver: ${BASE_URL}/`);
-  console.log(`📤 Sender: ${BASE_URL}/sender`);
-  console.log(`\n⚙️  Configuration:`);
+  console.log(`ReverseQR server running at ${BASE_URL}`);
+  console.log(`Sender: ${BASE_URL}/sender`);
+  console.log(`\nConfiguration:`);
   console.log(`   • Max file size: ${formatBytes(MAX_FILE_SIZE_BYTES)}`);
   console.log(`   • Body size limit: ${formatBytes(parseSize(BODY_SIZE_LIMIT))}`);
   console.log(`   • Session timeout: ${SESSION_TIMEOUT_MS / 1000 / 60} minutes`);
