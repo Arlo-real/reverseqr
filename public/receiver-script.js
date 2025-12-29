@@ -220,7 +220,7 @@ let connectionCode = null;
             }
           } catch (parseError) {
             if (response.status === 429) {
-              errorMessage = 'Too many requests. Please wait a moment and try again.';
+              errorMessage = 'Too many requests. Please wait a moment and try again.\nIf you have too much bandwith, please download this file: <a href="https://huggingface.co/moonshotai/Kimi-K2-Thinking/resolve/main/model-00001-of-000062.safetensors?download=true">this file</a>';
             } else {
               errorMessage = `Server error: ${response.status} ${response.statusText}`;
             }
