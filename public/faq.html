@@ -49,9 +49,9 @@
             1. Click "Send" on the home page<br>
             2. You'll receive a 3-word code and a QR code<br>
             3. Share the words with your recipient or have them scan the QR code<br>
-            4. (If using the 3 word code) The recipient opens the /receiver page and enters the words to connect<br>
-            5. Both parties verify the Security Fingerprint matches (if it does not, there is probably a man-in-the-middle attack) going on: DO NOT SEND ANYTHING EVEN REMOTELY PRIVATE!<br>
-            6. Once he connects, he select files to send or text<br>
+            4. (If using the 3-word code) The recipient opens the /receiver page and enters the words to connect<br>
+            5. Both parties verify the Security Fingerprint matches (if it does not, there is probably a man-in-the-middle attack going on: DO NOT SEND ANYTHING EVEN REMOTELY PRIVATE!)<br>
+            6. Once they connect, they select files to send or text<br>
           </p>
         </div>
       </section>
@@ -76,7 +76,7 @@
         <div class="info-item">
           <h3>But my connection is slow and I need more than 30 minutes to download the files.</h3>
           <p>
-            Don't worry, we didn't said the whole truth in the question above. If a file is currently being downloaded, the server will keep it available until the download is complete, even if that goes beyond the standard retention period.
+            Don't worry, we didn't say the whole truth in the question above. If a file is currently being downloaded, the server will keep it available until the download is complete, even if that goes beyond the standard retention period.
           </p>
         </div>
 
@@ -129,9 +129,9 @@
         <h2>Troubleshooting</h2>
 
         <div class="info-item">
-          <h3>There is no QR code nor 3 word code </h3>
+          <h3>There is no QR code nor 3-word code</h3>
           <p>
-            You are probably not using HTTPS, which is reqired by webcrypto, the code that encrypts your data. Make sure the URL starts with "https://".
+            You are probably not using HTTPS, which is required by WebCrypto, the API that encrypts your data. Make sure the URL starts with "https://".
           </p>
         </div>
 
@@ -154,9 +154,9 @@
         <h2>More info (nerd stuff)</h2>
 
         <div class="info-item">
-          <h3>How nuch RAM is needed?</h3>
+          <h3>How much RAM is needed?</h3>
           <p>
-            Unforuatly, you need about 3x the size of the files you want to send in free RAM. This is because files are cached, base64-encoded and encrypted in memory before being sent. The same applies for receiving files, which need to be downloaded, decrypted and decoded in memory before being saved.
+            Unfortunately, you need about 3x the size of the files you want to send in free RAM. This is because files are cached, base64-encoded and encrypted in memory before being sent. The same applies for receiving files, which need to be downloaded, decrypted and decoded in memory before being saved.
           </p>
         </div>
 
@@ -164,7 +164,7 @@
           <h3>How does the encryption work?</h3>
           <p>
             ReverseQR uses ECDH (Elliptic Curve Diffie-Hellman) for secure key exchange and AES-256-GCM for encrypting your messages and files. Your encryption keys never leave your browser—the server cannot decrypt your content.
-            However, a mailicious server operator could send a different webpage that do not encrypt the data, so only trust this service as much as its host.
+            However, a malicious server operator could send a different webpage that does not encrypt the data, so only trust this service as much as its host.
           </p>
         </div>
 
