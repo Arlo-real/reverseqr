@@ -101,6 +101,27 @@ sudo systemctl enable certbot.timer
 sudo systemctl start certbot.timer
 ```
 
+## 7. Add to autostart
+```bash
+# Copy the service file to systemd
+sudo cp /where-you-put-the-project/reverseqr/reverseqr.service /etc/systemd/system/
+
+# Reload systemd to recognize the new service
+sudo systemctl daemon-reload
+
+# Enable auto-start on boot
+sudo systemctl enable reverseqr
+
+# Start the service now
+sudo systemctl start reverseqr
+```
+Useful commands:
+
+```bash sudo systemctl status reverseqr ``` - Check if it's running
+```bash sudo systemctl restart reverseqr ``` - Restart the service
+```bash sudo journalctl -u reverseqr -f ``` - View live logs
+```bash sudo systemctl disable reverseqr ``` - Disable auto-start
+
 ## Verification
 
 - Visit `https://yourdomain.com` in browser
