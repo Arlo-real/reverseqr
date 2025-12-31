@@ -551,7 +551,7 @@ let connectionCode = null;
       const errorDiv = document.getElementById('error');
       
       // Fetch available images and pick one at random
-      let imageSrc = '/429/Calm down you must.png'; // fallback
+      let imageSrc = '/429/Calm down you must.webp'; // fallback
       try {
         const response = await fetch('/api/429-images');
         const data = await response.json();

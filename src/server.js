@@ -105,8 +105,13 @@ const globalDdosLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => 'global',  // All requests share same key
+  skip: (req) => {
+    // Always allow error image endpoints so they can be displayed during rate limiting
+    return req.path === '/api/429-images' || req.path === '/api/404-images' || 
+           req.path.startsWith('/429/') || req.path.startsWith('/404/');
+  },
   handler: (req, res, next, options) => {
-    log('RATE_LIMIT', `Global DDoS limit exceeded - Path: ${req.path}, IP: ${req.ip}`);
+    console.log(`[RATE_LIMIT] Global DDoS limit exceeded - Path: ${req.path}, IP: ${req.ip}`);
     res.status(429).json(options.message);
   }
 });
@@ -119,11 +124,13 @@ const generalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => {
-    // Skip rate limiting for static files
-    return !req.path.startsWith('/api/');
+    // Skip rate limiting for static files and error image endpoints
+    if (!req.path.startsWith('/api/')) return true;
+    if (req.path === '/api/429-images' || req.path === '/api/404-images') return true;
+    return false;
   },
   handler: (req, res, next, options) => {
-    log('RATE_LIMIT', `General API limit exceeded - Path: ${req.path}, IP: ${req.ip}`);
+    console.log(`[RATE_LIMIT] General API limit exceeded - Path: ${req.path}, IP: ${req.ip}`);
     res.status(429).json(options.message);
   }
 });
@@ -136,7 +143,7 @@ const sessionLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res, next, options) => {
-    log('RATE_LIMIT', `Session creation limit exceeded - IP: ${req.ip}`);
+    console.log(`[RATE_LIMIT] Session creation limit exceeded - IP: ${req.ip}`);
     res.status(429).json(options.message);
   }
 });
@@ -149,7 +156,7 @@ const uploadLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res, next, options) => {
-    log('RATE_LIMIT', `Upload limit exceeded - IP: ${req.ip}`);
+    console.log(`[RATE_LIMIT] Upload limit exceeded - IP: ${req.ip}`);
     res.status(429).json(options.message);
   }
 });
