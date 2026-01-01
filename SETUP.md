@@ -84,17 +84,9 @@ sudo nginx -t
 sudo systemctl restart nginx
 ```
 
-## 5. Start with PM2
 
-```bash
-sudo npm install -g pm2
 
-pm2 start src/server.js --name reverseqr
-pm2 save
-sudo pm2 startup
-```
-
-## 6. Auto-Renew SSL Certificates
+## 5. Auto-Renew SSL Certificates
 
 ```bash
 sudo systemctl enable certbot.timer
@@ -115,18 +107,50 @@ sudo systemctl enable reverseqr
 # Start the service now
 sudo systemctl start reverseqr
 ```
-Useful commands:
 
-```bash sudo systemctl status reverseqr ``` - Check if it's running
-```bash sudo systemctl restart reverseqr ``` - Restart the service
-```bash sudo journalctl -u reverseqr -f ``` - View live logs
-```bash sudo systemctl disable reverseqr ``` - Disable auto-start
 
-## Verification
+### Useful commands:
 
-- Visit `https://yourdomain.com` in browser
+Check if it's running:
+```bash
+sudo systemctl status reverseqr
+```
+
+Restart the service:
+```bash
+sudo systemctl restart reverseqr
+```
+
+View live logs:
+```bash
+sudo journalctl -u reverseqr -f
+```
+
+Disable auto-start:
+```bash
+sudo systemctl disable reverseqr
+```
+
+
+
+
+## 5. Alternative to systemd: start with PM2
+
+```bash
+sudo npm install -g pm2
+
+pm2 start src/server.js --name reverseqr
+pm2 save
+sudo pm2 startup
+```
+
+### Useful commands:
+
 - Check PM2 status: `pm2 status`
 - View logs: `pm2 logs reverseqr`
+
+
+
 
 ## Troubleshooting
 
