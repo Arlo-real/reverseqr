@@ -3,7 +3,7 @@
 ## Prerequisites
 - Ubuntu/Debian server with sudo access
 - Domain name pointing to your server
-- Node.js and npm installed get it [here](https://nodejs.org/en/download)
+- Node.js and npm installed: get it [here](https://nodejs.org/en/download)
 
 ## 1. Configure Environment
 
@@ -127,9 +127,7 @@ sudo journalctl -u reverseqr -f
 ```
 
 Disable auto-start:
-```bash
-sudo systemctl disable reverseqr
-```
+`sudo systemctl disable reverseqr`
 
 
 
