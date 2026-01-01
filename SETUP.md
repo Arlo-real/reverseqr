@@ -127,7 +127,9 @@ sudo journalctl -u reverseqr -f
 ```
 
 Disable auto-start:
-`sudo systemctl disable reverseqr`
+```bash
+sudo systemctl disable reverseqr
+```
 
 
 
@@ -144,8 +146,12 @@ sudo pm2 startup
 
 ### Useful commands:
 
-- Check PM2 status: `pm2 status`
-- View logs: `pm2 logs reverseqr`
+- Check PM2 status:
+```bash
+pm2 status```
+- View logs:
+```bash
+pm2 logs reverseqr```
 
 
 
