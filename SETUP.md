@@ -160,7 +160,6 @@ pm2 logs reverseqr
 
 ## Troubleshooting
 
-- **Port 3000 not responding**: Check firewall, ensure PM2 is running
 - **SSL errors**: Verify certificate paths in nginx config
 - **File uploads fail**: Check permissions on `public/uploads/` directory
 - **QR code not working**: Ensure `BASE_URL` in `.env` matches your domain
