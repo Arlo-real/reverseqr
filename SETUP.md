@@ -148,10 +148,12 @@ sudo pm2 startup
 
 - Check PM2 status:
 ```bash
-pm2 status```
+pm2 status
+```
 - View logs:
 ```bash
-pm2 logs reverseqr```
+pm2 logs reverseqr
+```
 
 
 
