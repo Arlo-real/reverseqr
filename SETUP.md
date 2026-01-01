@@ -93,7 +93,7 @@ sudo systemctl enable certbot.timer
 sudo systemctl start certbot.timer
 ```
 
-## 7. Add to autostart
+## 6. Add to autostart
 ```bash
 # Copy the service file to systemd
 sudo cp /where-you-put-the-project/reverseqr/reverseqr.service /etc/systemd/system/
@@ -134,7 +134,7 @@ sudo systemctl disable reverseqr
 
 
 
-## 5. Alternative to systemd: start with PM2
+## 7. Alternative to systemd: start with PM2 (not recommended)
 
 ```bash
 sudo npm install -g pm2
