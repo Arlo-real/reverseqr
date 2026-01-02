@@ -46,7 +46,7 @@ function parseSize(sizeStr) {
 }
 
 // Configuration
-const BASE_URL = process.env.BASE_URL || 'https://localhost';
+const BASE_URL = process.env.BASE_URL || 'https://localhost:3000';
 const PORT = process.env.PORT || 3000;
 const MAX_FILE_SIZE_BYTES = parseSize(process.env.MAX_FILE_SIZE_BYTES) || 104857600; // 100MB default
 const BODY_SIZE_LIMIT = process.env.BODY_SIZE_LIMIT || '1gb';
@@ -759,6 +759,10 @@ app.use((error, req, res, next) => {
     if (error.code === 'LIMIT_FILE_COUNT') {
       return res.status(400).json({ error: 'Too many files' });
     }
+  } else if (error.code === 'ENOSPC') {
+    // Disk full - no space left on device
+    console.error('Disk full error:', error);
+    return res.status(507).json({ error: 'Server storage is full. Please try again later.' });
   } else if (error.status === 413) {
     return res.status(413).json({ error: 'Payload too large' });
   }
