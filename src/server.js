@@ -6,6 +6,7 @@ const QRCode = require('qrcode');
 const multer = require('multer');
 const WebSocket = require('ws');
 const rateLimit = require('express-rate-limit');
+const { execSync } = require('child_process');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const ConnectionManager = require('./connectionManager');
@@ -279,6 +280,69 @@ cleanupExpiredFiles();
 // Start cleanup timer for recurring cleanup
 const cleanupInterval = setInterval(cleanupExpiredFiles, CLEANUP_INTERVAL_MS);
 
+/**
+ * Get available disk space for the upload directory
+ * Returns available bytes or null if unable to determine
+ */
+function getAvailableStorage() {
+  try {
+    // Use df command to get available space (works on Linux/Mac)
+    const output = execSync(`df -B1 "${UPLOAD_DIR}" | tail -1 | awk '{print $4}'`, { encoding: 'utf8' });
+    const availableBytes = parseInt(output.trim());
+    return isNaN(availableBytes) ? null : availableBytes;
+  } catch (error) {
+    console.error('Error checking disk space:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Middleware to check storage before accepting uploads
+ * Compares available disk space against the incoming file size
+ * If storage is low, attempts cleanup first, then rejects if still insufficient
+ */
+function checkStorageMiddleware(req, res, next) {
+  const contentLength = parseInt(req.headers['content-length'] || '0');
+  
+  if (contentLength === 0) {
+    // No content-length header or zero size, proceed
+    return next();
+  }
+  
+  let availableSpace = getAvailableStorage();
+  
+  if (availableSpace === null) {
+    // Can't determine space - try cleanup first as a precaution, then proceed
+    // Flag the request so we can provide a better error if upload fails
+    console.log('Warning: Unable to determine available storage space, attempting precautionary cleanup');
+    cleanupExpiredFiles();
+    req.storageCheckFailed = true;
+    return next();
+  }
+  
+  if (availableSpace < contentLength) {
+    console.log(`Insufficient storage: ${formatBytes(availableSpace)} available, file size: ${formatBytes(contentLength)}`);
+    console.log('Triggering cleanup of expired files...');
+    
+    // Try to free up space by cleaning expired files
+    cleanupExpiredFiles();
+    
+    // Check again after cleanup
+    availableSpace = getAvailableStorage();
+    
+    if (availableSpace !== null && availableSpace < contentLength) {
+      console.log(`Still insufficient storage after cleanup: ${formatBytes(availableSpace)} available`);
+      return res.status(507).json({ 
+        error: 'Server storage is full. Please try again later.',
+        availableSpace: formatBytes(availableSpace),
+        fileSize: formatBytes(contentLength)
+      });
+    }
+  }
+  
+  next();
+}
+
 // ============ ROUTES ============
 
 /**
@@ -426,7 +490,7 @@ app.get('/api/session/status/:code', (req, res) => {
   }
 });
 
-app.post('/api/message/send', uploadLimiter, upload.array('files'), (req, res) => {
+app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.array('files'), (req, res) => {
   try {
     let { code, messageType, ciphertext, iv, authTag, hash, text } = req.body;
     const clientIp = req.ip;
@@ -762,7 +826,18 @@ app.use((error, req, res, next) => {
   } else if (error.code === 'ENOSPC') {
     // Disk full - no space left on device
     console.error('Disk full error:', error);
-    return res.status(507).json({ error: 'Server storage is full. Please try again later.' });
+    
+    // Try cleanup and report the error
+    console.log('Triggering emergency cleanup of expired files...');
+    cleanupExpiredFiles();
+    
+    const storageInfo = req.storageCheckFailed 
+      ? ' (storage check was unable to determine available space beforehand)'
+      : '';
+    
+    return res.status(507).json({ 
+      error: `Server storage is full. Please try again later.${storageInfo}`
+    });
   } else if (error.status === 413) {
     return res.status(413).json({ error: 'Payload too large' });
   }
