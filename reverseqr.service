@@ -1,14 +1,18 @@
 # ReverseQR systemd service file
+# DEPRECATED: This file is deprecated. Use setup-service.sh instead.
+# 
 # Installation:
-#   sudo cp reverseqr.service /etc/systemd/system/
-#   sudo systemctl daemon-reload
-#   sudo systemctl enable reverseqr
-#   sudo systemctl start reverseqr
+#   chmod +x setup-service.sh
+#   sudo ./setup-service.sh
 #
-# Management:
+# This will generate a service file with the correct paths for your installation.
+#
+# Manual service management:
 #   sudo systemctl status reverseqr
 #   sudo systemctl restart reverseqr
 #   sudo journalctl -u reverseqr -f
+
+# NOTE: The below is a template. Use setup-service.sh to generate an actual service file.
 
 [Unit]
 Description=ReverseQR - Secure File Sharing Server
