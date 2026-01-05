@@ -13,9 +13,18 @@ SERVICE_FILE="/tmp/${SERVICE_NAME}.service"
 # Get the current user
 CURRENT_USER="${SUDO_USER:-$(whoami)}"
 
+# Find the node executable
+NODE_PATH=$(which node)
+if [ -z "$NODE_PATH" ]; then
+  echo "Error: node executable not found in PATH"
+  echo "Please install Node.js or ensure it's in your PATH"
+  exit 1
+fi
+
 echo "=== ReverseQR Service Setup ==="
 echo "Installation directory: $SCRIPT_DIR"
 echo "User: $CURRENT_USER"
+echo "Node executable: $NODE_PATH"
 echo ""
 
 # Generate the service file
@@ -37,7 +46,7 @@ WorkingDirectory=$SCRIPT_DIR
 EnvironmentFile=$SCRIPT_DIR/.env
 
 # Start command
-ExecStart=/usr/bin/node $SCRIPT_DIR/src/server.js
+ExecStart=$NODE_PATH $SCRIPT_DIR/src/server.js
 
 # Restart policy
 Restart=on-failure
