@@ -21,7 +21,35 @@ echo "[DEBUG] Current user: $CURRENT_USER" >&2
 
 # Find the node executable
 echo "[DEBUG] Searching for node executable..." >&2
-NODE_PATH=$(which node 2>&1) || true
+
+# When running with sudo, the PATH might not include the user's node
+# Try to find node using the original user's shell or common locations
+NODE_PATH=""
+
+# If running with sudo, try to get node path from the user's environment
+if [ -n "$SUDO_USER" ]; then
+  echo "[DEBUG] Running with sudo, checking original user's PATH..." >&2
+  NODE_PATH=$(sudo -u "$SUDO_USER" -i which node 2>/dev/null) || true
+fi
+
+# If not found, try the current PATH
+if [ -z "$NODE_PATH" ]; then
+  echo "[DEBUG] Trying current PATH..." >&2
+  NODE_PATH=$(which node 2>/dev/null) || true
+fi
+
+# If still not found, try common locations
+if [ -z "$NODE_PATH" ]; then
+  echo "[DEBUG] Searching common installation locations..." >&2
+  for path in /usr/bin/node /usr/local/bin/node /opt/node/bin/node ~/.nvm/versions/node/*/bin/node /usr/local/nvm/versions/node/*/bin/node; do
+    if [ -x "$path" ] 2>/dev/null; then
+      NODE_PATH="$path"
+      echo "[DEBUG] Found node at: $NODE_PATH" >&2
+      break
+    fi
+  done
+fi
+
 if [ -z "$NODE_PATH" ]; then
   echo "ERROR: node executable not found in PATH" >&2
   echo "Please install Node.js or ensure it's in your PATH" >&2
