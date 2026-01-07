@@ -1,5 +1,6 @@
 node_modules/
 package-lock.json
+reverseqr.service
 .env
 .env.local
 .DS_Store

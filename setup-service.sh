@@ -11,7 +11,7 @@ export PYTHONUNBUFFERED=1
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE_NAME="reverseqr"
-SERVICE_FILE="/tmp/${SERVICE_NAME}.service"
+SERVICE_FILE="${SCRIPT_DIR}/${SERVICE_NAME}.service"
 
 echo "Detecting system configuration..." >&2
 
@@ -104,6 +104,15 @@ EOF
 echo "[DEBUG] Service file generated successfully at $SERVICE_FILE" >&2
 echo "" >&2
 
+# Check if systemd is running
+SYSTEMD_AVAILABLE=false
+if systemctl --version &>/dev/null && [ -d /run/systemd/system ]; then
+  SYSTEMD_AVAILABLE=true
+  echo "[DEBUG] systemd is available" >&2
+else
+  echo "[DEBUG] systemd is NOT available (container environment)" >&2
+fi
+
 # Check if running with sudo
 if [[ $EUID -ne 0 ]]; then
    echo "This script needs sudo to install the service file." >&2
@@ -111,15 +120,50 @@ if [[ $EUID -ne 0 ]]; then
    echo "To install the service, run:" >&2
    echo "  sudo bash $0" >&2
    echo "" >&2
-   echo "Or manually install with:" >&2
-   echo "  sudo cp $SERVICE_FILE /etc/systemd/system/${SERVICE_NAME}.service" >&2
-   echo "  sudo systemctl daemon-reload" >&2
-   echo "  sudo systemctl enable ${SERVICE_NAME}" >&2
-   echo "  sudo systemctl start ${SERVICE_NAME}" >&2
+   if [ "$SYSTEMD_AVAILABLE" = true ]; then
+     echo "Or manually install with:" >&2
+     echo "  sudo cp $SERVICE_FILE /etc/systemd/system/${SERVICE_NAME}.service" >&2
+     echo "  sudo systemctl daemon-reload" >&2
+     echo "  sudo systemctl enable ${SERVICE_NAME}" >&2
+     echo "  sudo systemctl start ${SERVICE_NAME}" >&2
+   fi
    exit 0
 fi
 
-# Install the service file
+if [ "$SYSTEMD_AVAILABLE" = false ]; then
+  echo "=== systemd Not Available ===" >&2
+  echo "" >&2
+  echo "This environment does not use systemd (typical for containers)." >&2
+  echo "To run ReverseQR, use one of these methods:" >&2
+  echo "" >&2
+  echo "1. Run directly in foreground:" >&2
+  echo "   cd $SCRIPT_DIR" >&2
+  echo "   node src/server.js" >&2
+  echo "" >&2
+  echo "2. Run in background with nohup:" >&2
+  echo "   cd $SCRIPT_DIR" >&2
+  echo "   nohup node src/server.js > /var/log/reverseqr.log 2>&1 &" >&2
+  echo "" >&2
+  echo "3. Use a process manager like PM2:" >&2
+  echo "   npm install -g pm2" >&2
+  echo "   cd $SCRIPT_DIR" >&2
+  echo "   pm2 start src/server.js --name reverseqr" >&2
+  echo "   pm2 save" >&2
+  echo "   pm2 startup" >&2
+  echo "" >&2
+  echo "The systemd service file has been generated at:" >&2
+  echo "  $SERVICE_FILE" >&2
+  echo "" >&2
+  echo "You can use it on systems with systemd by running this script on that system," >&2
+  echo "or manually copy it to /etc/systemd/system/${SERVICE_NAME}.service and run:" >&2
+  echo "  sudo systemctl daemon-reload" >&2
+  echo "  sudo systemctl enable ${SERVICE_NAME}" >&2
+  echo "  sudo systemctl start ${SERVICE_NAME}" >&2
+  echo "" >&2
+  exit 0
+fi
+
+# Install the service file (systemd is available)
 echo "[*] Installing service file to /etc/systemd/system/${SERVICE_NAME}.service..." >&2
 cp -v "$SERVICE_FILE" "/etc/systemd/system/${SERVICE_NAME}.service" >&2
 
@@ -139,10 +183,10 @@ echo "" >&2
 echo "=== Installation Complete ===" >&2
 echo "" >&2
 echo "Service management commands:" >&2
-echo "  sudo systemctl status ${SERVICE_NAME}       # Check status"
-echo "  sudo systemctl start ${SERVICE_NAME}        # Start service"
-echo "  sudo systemctl stop ${SERVICE_NAME}         # Stop service"
-echo "  sudo systemctl restart ${SERVICE_NAME}      # Restart service"
-echo "  sudo systemctl disable ${SERVICE_NAME}      # Disable auto-start"
-echo "  sudo journalctl -u ${SERVICE_NAME} -f       # View live logs"
-echo ""
+echo "  sudo systemctl status ${SERVICE_NAME}       # Check status" >&2
+echo "  sudo systemctl start ${SERVICE_NAME}        # Start service" >&2
+echo "  sudo systemctl stop ${SERVICE_NAME}         # Stop service" >&2
+echo "  sudo systemctl restart ${SERVICE_NAME}      # Restart service" >&2
+echo "  sudo systemctl disable ${SERVICE_NAME}      # Disable auto-start" >&2
+echo "  sudo journalctl -u ${SERVICE_NAME} -f       # View live logs" >&2
+echo "" >&2
