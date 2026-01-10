@@ -10,7 +10,6 @@ const { execSync } = require('child_process');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const ConnectionManager = require('./connectionManager');
-const { DiffieHellman, deriveEncryptionKey } = require('./diffieHellman');
 const EncryptionManager = require('./encryptionManager');
 const { encodeToPgp, decodeFromPgp } = require('./pgpWordlist');
 
