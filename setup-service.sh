@@ -26,10 +26,33 @@ echo "[DEBUG] Searching for node executable..." >&2
 # Try to find node using the original user's shell or common locations
 NODE_PATH=""
 
-# If running with sudo, try to get node path from the user's environment
+# If running with sudo, try to get node path from the user's login shell
 if [ -n "$SUDO_USER" ]; then
-  echo "[DEBUG] Running with sudo, checking original user's PATH..." >&2
-  NODE_PATH=$(sudo -u "$SUDO_USER" -i which node 2>/dev/null) || true
+  echo "[DEBUG] Running with sudo, checking original user's login shell..." >&2
+  # Use login shell (-l) to load user's .bashrc/.profile which sets up nvm/fnm/etc
+  NODE_PATH=$(sudo -u "$SUDO_USER" bash -lc 'which node' 2>/dev/null) || true
+  
+  # Also try with -i for interactive shell
+  if [ -z "$NODE_PATH" ]; then
+    NODE_PATH=$(sudo -u "$SUDO_USER" bash -ic 'which node' 2>/dev/null) || true
+  fi
+  
+  # Try to find in user's home directory (nvm, fnm, n, etc.)
+  if [ -z "$NODE_PATH" ]; then
+    USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    echo "[DEBUG] Searching in user home: $USER_HOME" >&2
+    for path in "$USER_HOME"/.nvm/versions/node/*/bin/node \
+                "$USER_HOME"/.fnm/node-versions/*/installation/bin/node \
+                "$USER_HOME"/.local/share/fnm/node-versions/*/installation/bin/node \
+                "$USER_HOME"/.n/bin/node \
+                "$USER_HOME"/.local/bin/node; do
+      if [ -x "$path" ] 2>/dev/null; then
+        NODE_PATH="$path"
+        echo "[DEBUG] Found node at: $NODE_PATH" >&2
+        break
+      fi
+    done
+  fi
 fi
 
 # If not found, try the current PATH
@@ -38,10 +61,10 @@ if [ -z "$NODE_PATH" ]; then
   NODE_PATH=$(which node 2>/dev/null) || true
 fi
 
-# If still not found, try common locations
+# If still not found, try common system locations
 if [ -z "$NODE_PATH" ]; then
-  echo "[DEBUG] Searching common installation locations..." >&2
-  for path in /usr/bin/node /usr/local/bin/node /opt/node/bin/node ~/.nvm/versions/node/*/bin/node /usr/local/nvm/versions/node/*/bin/node; do
+  echo "[DEBUG] Searching common system locations..." >&2
+  for path in /usr/bin/node /usr/local/bin/node /opt/node/bin/node /snap/bin/node; do
     if [ -x "$path" ] 2>/dev/null; then
       NODE_PATH="$path"
       echo "[DEBUG] Found node at: $NODE_PATH" >&2
@@ -51,9 +74,18 @@ if [ -z "$NODE_PATH" ]; then
 fi
 
 if [ -z "$NODE_PATH" ]; then
-  echo "ERROR: node executable not found in PATH" >&2
-  echo "Please install Node.js or ensure it's in your PATH" >&2
+  echo "ERROR: node executable not found" >&2
+  echo "" >&2
+  echo "Please run: which node" >&2
+  echo "Then set NODE_PATH manually and re-run:" >&2
+  echo "  sudo NODE_PATH=/path/to/node ./setup-service.sh" >&2
   exit 1
+fi
+
+# Allow manual override via environment variable
+if [ -n "${NODE_PATH_OVERRIDE:-}" ]; then
+  NODE_PATH="$NODE_PATH_OVERRIDE"
+  echo "[DEBUG] Using NODE_PATH override: $NODE_PATH" >&2
 fi
 
 echo "=== ReverseQR Service Setup ===" >&2
