@@ -643,8 +643,8 @@ async function sendMessage() {
       return;
     }
 
-    const text = document.getElementById('textInput').value.trim();
-    if (!text && selectedFiles.length === 0) {
+    const text = document.getElementById('textInput').value;
+    if (!text.trim() && selectedFiles.length === 0) {
       showError('Please enter a message or select files');
       return;
     }
@@ -863,7 +863,7 @@ function displaySentMessages() {
     if (msg.type === 'text' && msg.text) {
       msgDiv.innerHTML = `
         <div class="message-type">Text</div>
-        <div class="message-content">${escapeHtml(msg.text)}</div>
+        <div class="message-content">${escapeHtml(msg.text).replace(/\n/g, '<br>')}</div>
       `;
     } else if (msg.files && msg.files.length > 0) {
       const filesHtml = msg.files.map(f => `

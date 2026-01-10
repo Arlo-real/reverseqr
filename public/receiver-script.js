@@ -292,7 +292,7 @@ let connectionCode = null;
 
           msgDiv.innerHTML = `
             <div class="message-type">Text Message</div>
-            <div class="message-text">${escapeHtml(decrypted)}</div>
+            <div class="message-text">${escapeHtml(decrypted).replace(/\n/g, '<br>')}</div>
           `;
         } else if (msg.type === 'files') {
           let filesHtml = '';
