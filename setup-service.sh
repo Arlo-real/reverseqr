@@ -11,7 +11,7 @@ export PYTHONUNBUFFERED=1
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE_NAME="reverseqr"
-SERVICE_FILE="${SCRIPT_DIR}/${SERVICE_NAME}.service"
+SERVICE_FILE="/tmp/${SERVICE_NAME}.service"
 
 echo "Detecting system configuration..." >&2
 
@@ -26,33 +26,10 @@ echo "[DEBUG] Searching for node executable..." >&2
 # Try to find node using the original user's shell or common locations
 NODE_PATH=""
 
-# If running with sudo, try to get node path from the user's login shell
+# If running with sudo, try to get node path from the user's environment
 if [ -n "$SUDO_USER" ]; then
-  echo "[DEBUG] Running with sudo, checking original user's login shell..." >&2
-  # Use login shell (-l) to load user's .bashrc/.profile which sets up nvm/fnm/etc
-  NODE_PATH=$(sudo -u "$SUDO_USER" bash -lc 'which node' 2>/dev/null) || true
-  
-  # Also try with -i for interactive shell
-  if [ -z "$NODE_PATH" ]; then
-    NODE_PATH=$(sudo -u "$SUDO_USER" bash -ic 'which node' 2>/dev/null) || true
-  fi
-  
-  # Try to find in user's home directory (nvm, fnm, n, etc.)
-  if [ -z "$NODE_PATH" ]; then
-    USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
-    echo "[DEBUG] Searching in user home: $USER_HOME" >&2
-    for path in "$USER_HOME"/.nvm/versions/node/*/bin/node \
-                "$USER_HOME"/.fnm/node-versions/*/installation/bin/node \
-                "$USER_HOME"/.local/share/fnm/node-versions/*/installation/bin/node \
-                "$USER_HOME"/.n/bin/node \
-                "$USER_HOME"/.local/bin/node; do
-      if [ -x "$path" ] 2>/dev/null; then
-        NODE_PATH="$path"
-        echo "[DEBUG] Found node at: $NODE_PATH" >&2
-        break
-      fi
-    done
-  fi
+  echo "[DEBUG] Running with sudo, checking original user's PATH..." >&2
+  NODE_PATH=$(sudo -u "$SUDO_USER" -i which node 2>/dev/null) || true
 fi
 
 # If not found, try the current PATH
@@ -61,10 +38,10 @@ if [ -z "$NODE_PATH" ]; then
   NODE_PATH=$(which node 2>/dev/null) || true
 fi
 
-# If still not found, try common system locations
+# If still not found, try common locations
 if [ -z "$NODE_PATH" ]; then
-  echo "[DEBUG] Searching common system locations..." >&2
-  for path in /usr/bin/node /usr/local/bin/node /opt/node/bin/node /snap/bin/node; do
+  echo "[DEBUG] Searching common installation locations..." >&2
+  for path in /usr/bin/node /usr/local/bin/node /opt/node/bin/node ~/.nvm/versions/node/*/bin/node /usr/local/nvm/versions/node/*/bin/node; do
     if [ -x "$path" ] 2>/dev/null; then
       NODE_PATH="$path"
       echo "[DEBUG] Found node at: $NODE_PATH" >&2
@@ -74,18 +51,9 @@ if [ -z "$NODE_PATH" ]; then
 fi
 
 if [ -z "$NODE_PATH" ]; then
-  echo "ERROR: node executable not found" >&2
-  echo "" >&2
-  echo "Please run: which node" >&2
-  echo "Then set NODE_PATH manually and re-run:" >&2
-  echo "  sudo NODE_PATH=/path/to/node ./setup-service.sh" >&2
+  echo "ERROR: node executable not found in PATH" >&2
+  echo "Please install Node.js or ensure it's in your PATH" >&2
   exit 1
-fi
-
-# Allow manual override via environment variable
-if [ -n "${NODE_PATH_OVERRIDE:-}" ]; then
-  NODE_PATH="$NODE_PATH_OVERRIDE"
-  echo "[DEBUG] Using NODE_PATH override: $NODE_PATH" >&2
 fi
 
 echo "=== ReverseQR Service Setup ===" >&2
@@ -136,15 +104,6 @@ EOF
 echo "[DEBUG] Service file generated successfully at $SERVICE_FILE" >&2
 echo "" >&2
 
-# Check if systemd is running
-SYSTEMD_AVAILABLE=false
-if systemctl --version &>/dev/null && [ -d /run/systemd/system ]; then
-  SYSTEMD_AVAILABLE=true
-  echo "[DEBUG] systemd is available" >&2
-else
-  echo "[DEBUG] systemd is NOT available (container environment)" >&2
-fi
-
 # Check if running with sudo
 if [[ $EUID -ne 0 ]]; then
    echo "This script needs sudo to install the service file." >&2
@@ -152,50 +111,15 @@ if [[ $EUID -ne 0 ]]; then
    echo "To install the service, run:" >&2
    echo "  sudo bash $0" >&2
    echo "" >&2
-   if [ "$SYSTEMD_AVAILABLE" = true ]; then
-     echo "Or manually install with:" >&2
-     echo "  sudo cp $SERVICE_FILE /etc/systemd/system/${SERVICE_NAME}.service" >&2
-     echo "  sudo systemctl daemon-reload" >&2
-     echo "  sudo systemctl enable ${SERVICE_NAME}" >&2
-     echo "  sudo systemctl start ${SERVICE_NAME}" >&2
-   fi
+   echo "Or manually install with:" >&2
+   echo "  sudo cp $SERVICE_FILE /etc/systemd/system/${SERVICE_NAME}.service" >&2
+   echo "  sudo systemctl daemon-reload" >&2
+   echo "  sudo systemctl enable ${SERVICE_NAME}" >&2
+   echo "  sudo systemctl start ${SERVICE_NAME}" >&2
    exit 0
 fi
 
-if [ "$SYSTEMD_AVAILABLE" = false ]; then
-  echo "=== systemd Not Available ===" >&2
-  echo "" >&2
-  echo "This environment does not use systemd (typical for containers)." >&2
-  echo "To run ReverseQR, use one of these methods:" >&2
-  echo "" >&2
-  echo "1. Run directly in foreground:" >&2
-  echo "   cd $SCRIPT_DIR" >&2
-  echo "   node src/server.js" >&2
-  echo "" >&2
-  echo "2. Run in background with nohup:" >&2
-  echo "   cd $SCRIPT_DIR" >&2
-  echo "   nohup node src/server.js > /var/log/reverseqr.log 2>&1 &" >&2
-  echo "" >&2
-  echo "3. Use a process manager like PM2:" >&2
-  echo "   npm install -g pm2" >&2
-  echo "   cd $SCRIPT_DIR" >&2
-  echo "   pm2 start src/server.js --name reverseqr" >&2
-  echo "   pm2 save" >&2
-  echo "   pm2 startup" >&2
-  echo "" >&2
-  echo "The systemd service file has been generated at:" >&2
-  echo "  $SERVICE_FILE" >&2
-  echo "" >&2
-  echo "You can use it on systems with systemd by running this script on that system," >&2
-  echo "or manually copy it to /etc/systemd/system/${SERVICE_NAME}.service and run:" >&2
-  echo "  sudo systemctl daemon-reload" >&2
-  echo "  sudo systemctl enable ${SERVICE_NAME}" >&2
-  echo "  sudo systemctl start ${SERVICE_NAME}" >&2
-  echo "" >&2
-  exit 0
-fi
-
-# Install the service file (systemd is available)
+# Install the service file
 echo "[*] Installing service file to /etc/systemd/system/${SERVICE_NAME}.service..." >&2
 cp -v "$SERVICE_FILE" "/etc/systemd/system/${SERVICE_NAME}.service" >&2
 
@@ -215,10 +139,10 @@ echo "" >&2
 echo "=== Installation Complete ===" >&2
 echo "" >&2
 echo "Service management commands:" >&2
-echo "  sudo systemctl status ${SERVICE_NAME}       # Check status" >&2
-echo "  sudo systemctl start ${SERVICE_NAME}        # Start service" >&2
-echo "  sudo systemctl stop ${SERVICE_NAME}         # Stop service" >&2
-echo "  sudo systemctl restart ${SERVICE_NAME}      # Restart service" >&2
-echo "  sudo systemctl disable ${SERVICE_NAME}      # Disable auto-start" >&2
-echo "  sudo journalctl -u ${SERVICE_NAME} -f       # View live logs" >&2
-echo "" >&2
+echo "  sudo systemctl status ${SERVICE_NAME}       # Check status"
+echo "  sudo systemctl start ${SERVICE_NAME}        # Start service"
+echo "  sudo systemctl stop ${SERVICE_NAME}         # Stop service"
+echo "  sudo systemctl restart ${SERVICE_NAME}      # Restart service"
+echo "  sudo systemctl disable ${SERVICE_NAME}      # Disable auto-start"
+echo "  sudo journalctl -u ${SERVICE_NAME} -f       # View live logs"
+echo ""
