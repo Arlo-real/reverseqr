@@ -7,6 +7,15 @@ This guide explains how to run ReverseQR using Docker.
 - Docker Engine 20.10+
 - Docker Compose v2.0+
 
+### Install Docker (Linux)
+
+```bash
+# Auto-install Docker and Docker Compose
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
 ## Quick Start (Localhost)
 
 The simplest way to run ReverseQR:
