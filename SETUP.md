@@ -93,19 +93,10 @@ sudo systemctl enable certbot.timer
 sudo systemctl start certbot.timer
 ```
 
-## 6. Add to autostart
+## 6. Add to autostart using systemd
 ```bash
 # Copy the service file to systemd
-sudo cp /where-you-put-the-project/reverseqr/reverseqr.service /etc/systemd/system/
-
-# Reload systemd to recognize the new service
-sudo systemctl daemon-reload
-
-# Enable auto-start on boot
-sudo systemctl enable reverseqr
-
-# Start the service now
-sudo systemctl start reverseqr
+sudo ./setup-service.sh
 ```
 
 
@@ -129,30 +120,6 @@ sudo journalctl -u reverseqr -f
 Disable auto-start:
 ```bash
 sudo systemctl disable reverseqr
-```
-
-
-
-
-## 7. Alternative to systemd: start with PM2 (not recommended)
-
-```bash
-sudo npm install -g pm2
-
-pm2 start src/server.js --name reverseqr
-pm2 save
-sudo pm2 startup
-```
-
-### Useful commands:
-
-- Check PM2 status:
-```bash
-pm2 status
-```
-- View logs:
-```bash
-pm2 logs reverseqr
 ```
 
 
