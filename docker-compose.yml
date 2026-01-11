@@ -1,0 +1,69 @@
+# Docker Compose for ReverseQR
+# Usage:
+#   Localhost only:     docker compose up reverseqr
+#   With nginx:         docker compose --profile nginx up
+
+services:
+  # Main ReverseQR application
+  reverseqr:
+    build: .
+    container_name: reverseqr
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Persist uploads between restarts
+      - uploads_data:/app/public/uploads
+    ports:
+      # Expose directly when not using nginx
+      - "${HOST_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Nginx reverse proxy (optional, use with --profile nginx)
+  nginx:
+    image: nginx:alpine
+    container_name: reverseqr-nginx
+    profiles:
+      - nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      # SSL certificates (mount your own or use certbot)
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+      # Certbot webroot for Let's Encrypt
+      - certbot_webroot:/var/www/certbot:ro
+      - certbot_certs:/etc/letsencrypt:ro
+    depends_on:
+      reverseqr:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Certbot for SSL certificates (optional, use with --profile ssl)
+  certbot:
+    image: certbot/certbot
+    container_name: reverseqr-certbot
+    profiles:
+      - ssl
+    volumes:
+      - certbot_webroot:/var/www/certbot
+      - certbot_certs:/etc/letsencrypt
+    # Renew certificates
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  uploads_data:
+  certbot_webroot:
+  certbot_certs:

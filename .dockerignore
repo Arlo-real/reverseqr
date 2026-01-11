@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Git
+.git/
+.gitignore
+
+# Docker files (don't include in build context recursively)
+docker-compose*.yml
+Dockerfile*
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment files (build-time, use env vars instead)
+.env
+.env.*
+
+# Documentation
+*.md
+LICENSE
+docs/
+
+# Uploaded files (will be mounted as volume)
+public/uploads/*
+!public/uploads/.gitkeep
+
+# Development
+nodemon.json
