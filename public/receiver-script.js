@@ -613,35 +613,4 @@ let connectionCode = null;
       }
     });
 
-    async function hashBuffer(buffer) {
-      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-
-    async function hashToWords(hashHex) {
-      // Load EFF wordlist
-      const response = await fetch('/eff_wordlist.json');
-      const data = await response.json();
-      const wordlist = data.eff_wordlist;
-      const listLength = wordlist.length;
-      
-      // Convert hex hash to bytes
-      const hashBytes = [];
-      for (let i = 0; i < hashHex.length; i += 2) {
-        hashBytes.push(parseInt(hashHex.substr(i, 2), 16));
-      }
-      
-      // Take first 6 bytes (48 bits) of hash and split into 3 chunks
-      // Each chunk is used with modulo to get wordlist index
-      const words = [];
-      for (let i = 0; i < 3; i++) {
-        const byte1 = hashBytes[i * 2] || 0;
-        const byte2 = hashBytes[i * 2 + 1] || 0;
-        const twoBytes = (byte1 << 8) | byte2;
-        const index = twoBytes % listLength;
-        words.push(wordlist[index]);
-      }
-      
-      return words.join(' ');
-    }
+    // hashBuffer and hashToWords are defined earlier in this file
