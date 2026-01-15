@@ -601,7 +601,7 @@ async function connectToReceiver() {
 }
 
 async function encryptData(data, key) {
-  const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV is optimal for AES-GCM per NIST
+  const iv = crypto.getRandomValues(new Uint8Array(16));
   const cipher = await crypto.subtle.encrypt(
     {
       name: 'AES-GCM',
@@ -672,7 +672,7 @@ async function sendMessage() {
         ['encrypt']
       );
       
-      const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV is optimal for AES-GCM per NIST
+      const iv = crypto.getRandomValues(new Uint8Array(16));
       const ivHex = arrayToHex(iv);
       const encrypted = await crypto.subtle.encrypt(
         {
@@ -722,7 +722,7 @@ async function sendMessage() {
       for (let fileMetadata of selectedFiles) {
         const fileBuffer = await fileMetadata.file.arrayBuffer();
         const fileUint8Array = new Uint8Array(fileBuffer);
-        const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV is optimal for AES-GCM per NIST
+        const iv = crypto.getRandomValues(new Uint8Array(16));
         const ivHex = arrayToHex(iv);
         
         // Encrypt the file name
@@ -733,7 +733,7 @@ async function sendMessage() {
           false,
           ['encrypt']
         );
-        const fileNameIv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV is optimal for AES-GCM per NIST
+        const fileNameIv = crypto.getRandomValues(new Uint8Array(16));
         const fileNameIvHex = arrayToHex(fileNameIv);
         const fileNameEncoder = new TextEncoder();
         const fileNameData = fileNameEncoder.encode(fileMetadata.name);
