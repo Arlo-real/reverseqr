@@ -367,6 +367,19 @@ setup_nodejs() {
   echo ""
   echo -e "${BLUE}=== Node.js + systemd Setup ===${NC}"
   echo ""
+  
+  # Stop any running Docker containers from previous setup
+  if command -v docker &> /dev/null; then
+    if docker compose ps --quiet 2>/dev/null | grep -q .; then
+      echo "[*] Stopping Docker containers from previous setup..."
+      cd "$SCRIPT_DIR"
+      docker compose --profile nginx --profile ssl down 2>/dev/null || true
+      docker compose down 2>/dev/null || true
+      echo -e "${GREEN}[+] Docker containers stopped.${NC}"
+      echo ""
+    fi
+  fi
+  
   echo "Detecting system configuration..."
 
   # Get the current user
