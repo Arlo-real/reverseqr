@@ -587,7 +587,24 @@ EOF
   systemctl start "${SERVICE_NAME}"
 
   echo ""
-  echo -e "${GREEN}=== Installation Complete ===${NC}"
+  echo -e "${GREEN}=== Node.js Service Installed ===${NC}"
+  echo ""
+  
+  # Ask about HTTPS setup
+  echo "The server is now running on port 3000 (HTTP)."
+  echo ""
+  read -p "Would you like to set up HTTPS with nginx and Let's Encrypt? [Y/n]: " SETUP_HTTPS
+  
+  if [[ ! "$SETUP_HTTPS" =~ ^[Nn]$ ]]; then
+    setup_nodejs_https
+  else
+    echo ""
+    echo "You can access ReverseQR at: http://localhost:3000"
+    echo ""
+    echo -e "${YELLOW}Note: HTTPS is required for WebRTC file transfers to work over the internet.${NC}"
+    echo "Run this script again to set up HTTPS later."
+  fi
+  
   echo ""
   echo "Service management commands:"
   echo "  sudo systemctl status ${SERVICE_NAME}       # Check status"
@@ -596,6 +613,138 @@ EOF
   echo "  sudo systemctl restart ${SERVICE_NAME}      # Restart service"
   echo "  sudo systemctl disable ${SERVICE_NAME}      # Disable auto-start"
   echo "  sudo journalctl -u ${SERVICE_NAME} -f       # View live logs"
+  echo ""
+}
+
+# Function to set up HTTPS for Node.js with system nginx
+setup_nodejs_https() {
+  echo ""
+  echo -e "${BLUE}=== HTTPS Setup (nginx + Let's Encrypt) ===${NC}"
+  echo ""
+  
+  # Check/read domain from .env
+  EXISTING_URL=""
+  EXISTING_DOMAIN=""
+  if [ -f "$SCRIPT_DIR/.env" ]; then
+    EXISTING_URL=$(grep -E "^BASE_URL=" "$SCRIPT_DIR/.env" | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+    EXISTING_DOMAIN=$(echo "$EXISTING_URL" | sed 's|https\?://||g' | sed 's|:.*||g' | sed 's|/.*||g')
+  fi
+  
+  if [ -n "$EXISTING_DOMAIN" ] && [ "$EXISTING_DOMAIN" != "localhost" ]; then
+    echo "Current domain in .env: $EXISTING_DOMAIN"
+    read -p "Use this domain? [Y/n]: " USE_EXISTING
+    if [[ ! "$USE_EXISTING" =~ ^[Nn]$ ]]; then
+      DOMAIN_NAME="$EXISTING_DOMAIN"
+    else
+      read -p "Enter your domain name (e.g., example.com): " DOMAIN_NAME
+    fi
+  else
+    read -p "Enter your domain name (e.g., example.com): " DOMAIN_NAME
+  fi
+  
+  if [ -z "$DOMAIN_NAME" ]; then
+    echo -e "${RED}Error: Domain name is required for HTTPS setup.${NC}"
+    return 1
+  fi
+  
+  # Sanitize domain name
+  DOMAIN_NAME=$(echo "$DOMAIN_NAME" | sed 's|https\?://||g' | sed 's|/.*||g')
+  
+  read -p "Enter your email address (for Let's Encrypt notifications): " EMAIL_ADDRESS
+  
+  if [ -z "$EMAIL_ADDRESS" ]; then
+    echo -e "${RED}Error: Email address is required for Let's Encrypt.${NC}"
+    return 1
+  fi
+  
+  echo ""
+  echo "[*] Installing nginx and certbot..."
+  apt-get update
+  apt-get install -y nginx certbot python3-certbot-nginx
+  
+  echo ""
+  echo "[*] Configuring nginx..."
+  
+  # Create nginx config for the site
+  cat > /etc/nginx/sites-available/reverseqr << EOF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $DOMAIN_NAME;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+        proxy_buffering off;
+        proxy_read_timeout 86400;
+    }
+}
+EOF
+
+  # Enable the site
+  ln -sf /etc/nginx/sites-available/reverseqr /etc/nginx/sites-enabled/
+  
+  # Remove default site if it exists
+  rm -f /etc/nginx/sites-enabled/default
+  
+  # Test nginx config
+  nginx -t
+  if [ $? -ne 0 ]; then
+    echo -e "${RED}Error: nginx configuration test failed.${NC}"
+    return 1
+  fi
+  
+  # Restart nginx
+  systemctl restart nginx
+  systemctl enable nginx
+  
+  echo ""
+  echo "[*] Obtaining SSL certificate from Let's Encrypt..."
+  certbot --nginx -d "$DOMAIN_NAME" --email "$EMAIL_ADDRESS" --agree-tos --non-interactive --redirect
+  
+  CERTBOT_EXIT=$?
+  
+  if [ $CERTBOT_EXIT -ne 0 ]; then
+    echo ""
+    echo -e "${RED}Error: Failed to obtain SSL certificate.${NC}"
+    echo ""
+    echo "Common issues:"
+    echo "  - Domain DNS not pointing to this server"
+    echo "  - Port 80 blocked by firewall"
+    echo ""
+    echo "You can retry manually with:"
+    echo "  sudo certbot --nginx -d $DOMAIN_NAME"
+    return 1
+  fi
+  
+  # Update BASE_URL in .env
+  if [ -f "$SCRIPT_DIR/.env" ]; then
+    if grep -q "BASE_URL=" "$SCRIPT_DIR/.env"; then
+      sed -i "s|BASE_URL=.*|BASE_URL=https://$DOMAIN_NAME|g" "$SCRIPT_DIR/.env"
+    else
+      echo "BASE_URL=https://$DOMAIN_NAME" >> "$SCRIPT_DIR/.env"
+    fi
+    echo "[*] Updated BASE_URL in .env"
+  fi
+  
+  # Restart the Node.js service to pick up new BASE_URL
+  systemctl restart reverseqr
+  
+  echo ""
+  echo -e "${GREEN}=== HTTPS Setup Complete ===${NC}"
+  echo ""
+  echo "ReverseQR is now running at: https://$DOMAIN_NAME"
+  echo ""
+  echo -e "${YELLOW}Certificate Renewal:${NC}"
+  echo "Certbot automatically renews certificates via systemd timer."
+  echo "To check: sudo systemctl status certbot.timer"
   echo ""
 }
 
