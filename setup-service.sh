@@ -221,10 +221,6 @@ server {
 }
 EOF
 
-  # Restart nginx to apply new config
-  echo "[*] Restarting Nginx with HTTPS configuration..."
-  docker compose --profile nginx restart nginx
-  
   # Update BASE_URL in .env if it exists
   if [ -f "$SCRIPT_DIR/.env" ]; then
     if grep -q "BASE_URL=" "$SCRIPT_DIR/.env"; then
@@ -234,6 +230,14 @@ EOF
     fi
     echo "[*] Updated BASE_URL in .env"
   fi
+  
+  # Restart nginx to apply new config
+  echo "[*] Restarting Nginx with HTTPS configuration..."
+  docker compose --profile nginx restart nginx
+  
+  # Restart reverseqr container to pick up new BASE_URL
+  echo "[*] Restarting ReverseQR to apply new BASE_URL..."
+  docker compose restart reverseqr
   
   echo ""
   echo -e "${GREEN}=== HTTPS Setup Complete ===${NC}"
