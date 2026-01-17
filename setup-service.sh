@@ -79,8 +79,8 @@ setup_https() {
   echo "[*] Obtaining SSL certificate from Let's Encrypt..."
   echo ""
   
-  # Request certificate
-  docker compose run --rm certbot certonly --webroot \
+  # Request certificate (need --profile ssl to access certbot service)
+  docker compose --profile ssl run --rm certbot certonly --webroot \
     --webroot-path=/var/www/certbot \
     -d "$DOMAIN_NAME" \
     --email "$EMAIL_ADDRESS" \
@@ -99,7 +99,7 @@ setup_https() {
     echo "  - Domain already has a certificate (use --force-renewal)"
     echo ""
     echo "You can retry manually with:"
-    echo "  docker compose run --rm certbot certonly --webroot \\"
+    echo "  docker compose --profile ssl run --rm certbot certonly --webroot \\"
     echo "    --webroot-path=/var/www/certbot \\"
     echo "    -d $DOMAIN_NAME \\"
     echo "    --email $EMAIL_ADDRESS \\"
@@ -211,10 +211,10 @@ EOF
   echo ""
   echo -e "${YELLOW}Certificate Renewal:${NC}"
   echo "Let's Encrypt certificates expire after 90 days."
-  echo "To renew, run: docker compose run --rm certbot renew"
+  echo "To renew, run: docker compose --profile ssl run --rm certbot renew"
   echo ""
   echo "To set up automatic renewal, add this cron job:"
-  echo "  0 3 * * * cd $SCRIPT_DIR && docker compose run --rm certbot renew --quiet && docker compose --profile nginx restart nginx"
+  echo "  0 3 * * * cd $SCRIPT_DIR && docker compose --profile ssl run --rm certbot renew --quiet && docker compose --profile nginx restart nginx"
   echo ""
 }
 
