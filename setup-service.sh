@@ -32,7 +32,35 @@ setup_https() {
   echo "  - Port 80 and 443 accessible from the internet"
   echo ""
   
-  read -p "Enter your domain name (e.g., example.com): " DOMAIN_NAME
+  # Check if .env exists, if not create from example
+  if [ ! -f "$SCRIPT_DIR/.env" ]; then
+    if [ -f "$SCRIPT_DIR/.env.example" ]; then
+      cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env"
+      echo "[*] Created .env file from .env.example"
+    fi
+  fi
+  
+  # Read existing BASE_URL from .env
+  EXISTING_URL=""
+  EXISTING_DOMAIN=""
+  if [ -f "$SCRIPT_DIR/.env" ]; then
+    EXISTING_URL=$(grep -E "^BASE_URL=" "$SCRIPT_DIR/.env" | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+    # Extract domain from URL
+    EXISTING_DOMAIN=$(echo "$EXISTING_URL" | sed 's|https\?://||g' | sed 's|:.*||g' | sed 's|/.*||g')
+  fi
+  
+  # Check if existing domain is localhost or not set
+  if [ -n "$EXISTING_DOMAIN" ] && [ "$EXISTING_DOMAIN" != "localhost" ]; then
+    echo "Current domain in .env: $EXISTING_DOMAIN"
+    read -p "Use this domain? [Y/n]: " USE_EXISTING
+    if [[ ! "$USE_EXISTING" =~ ^[Nn]$ ]]; then
+      DOMAIN_NAME="$EXISTING_DOMAIN"
+    else
+      read -p "Enter your domain name (e.g., example.com): " DOMAIN_NAME
+    fi
+  else
+    read -p "Enter your domain name (e.g., example.com): " DOMAIN_NAME
+  fi
   
   if [ -z "$DOMAIN_NAME" ]; then
     echo -e "${RED}Error: Domain name is required for HTTPS setup.${NC}"
@@ -212,12 +240,40 @@ EOF
   echo ""
   echo "ReverseQR is now running at: https://$DOMAIN_NAME"
   echo ""
+  
+  # Ask about automatic certificate renewal
   echo -e "${YELLOW}Certificate Renewal:${NC}"
   echo "Let's Encrypt certificates expire after 90 days."
-  echo "To renew, run: docker compose --profile ssl run --rm --entrypoint '' certbot certbot renew"
   echo ""
-  echo "To set up automatic renewal, add this cron job:"
-  echo "  0 3 * * * cd $SCRIPT_DIR && docker compose --profile ssl run --rm --entrypoint '' certbot certbot renew --quiet && docker compose --profile nginx restart nginx"
+  read -p "Would you like to set up automatic certificate renewal? [Y/n]: " AUTO_RENEW
+  
+  if [[ ! "$AUTO_RENEW" =~ ^[Nn]$ ]]; then
+    # Create the renewal script
+    RENEW_SCRIPT="$SCRIPT_DIR/renew-cert.sh"
+    cat > "$RENEW_SCRIPT" << 'RENEWEOF'
+#!/bin/bash
+cd "$(dirname "$0")"
+docker compose --profile ssl run --rm --entrypoint '' certbot certbot renew --quiet
+docker compose --profile nginx restart nginx
+RENEWEOF
+    chmod +x "$RENEW_SCRIPT"
+    
+    # Add cron job (runs daily at 3am, certbot only renews if needed)
+    CRON_JOB="0 3 * * * $RENEW_SCRIPT"
+    
+    # Check if cron job already exists
+    if crontab -l 2>/dev/null | grep -qF "$RENEW_SCRIPT"; then
+      echo "[*] Automatic renewal cron job already exists."
+    else
+      (crontab -l 2>/dev/null; echo "$CRON_JOB") | crontab -
+      echo -e "${GREEN}[+] Automatic renewal enabled!${NC}"
+      echo "    Cron job added: runs daily at 3:00 AM"
+    fi
+  else
+    echo ""
+    echo "To manually renew, run:"
+    echo "  docker compose --profile ssl run --rm --entrypoint '' certbot certbot renew"
+  fi
   echo ""
 }
 
