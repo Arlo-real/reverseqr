@@ -428,12 +428,53 @@ setup_nodejs() {
   fi
 
   if [ -z "$NODE_PATH" ]; then
-    echo -e "${RED}ERROR: node executable not found${NC}"
+    echo -e "${YELLOW}Node.js is not installed.${NC}"
     echo ""
-    echo "Please run: which node"
-    echo "Then set NODE_PATH manually and re-run:"
-    echo "  sudo NODE_PATH=/path/to/node ./setup-service.sh"
-    exit 1
+    echo "How would you like to install Node.js?"
+    echo ""
+    echo -e "  ${GREEN}1)${NC} Install via NodeSource (recommended, latest LTS)"
+    echo -e "  ${GREEN}2)${NC} Install via apt (may be older version)"
+    echo -e "  ${GREEN}3)${NC} Skip - I'll install it manually"
+    echo ""
+    read -p "Enter your choice [1/2/3]: " NODE_INSTALL_CHOICE
+    
+    case "$NODE_INSTALL_CHOICE" in
+      1)
+        echo ""
+        echo "[*] Installing Node.js via NodeSource..."
+        # Install Node.js 20.x LTS via NodeSource
+        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+        apt-get install -y nodejs
+        NODE_PATH=$(which node 2>/dev/null) || true
+        if [ -z "$NODE_PATH" ]; then
+          echo -e "${RED}Error: Node.js installation failed.${NC}"
+          exit 1
+        fi
+        echo -e "${GREEN}[+] Node.js installed successfully!${NC}"
+        ;;
+      2)
+        echo ""
+        echo "[*] Installing Node.js via apt..."
+        apt-get update
+        apt-get install -y nodejs npm
+        NODE_PATH=$(which node 2>/dev/null) || true
+        if [ -z "$NODE_PATH" ]; then
+          echo -e "${RED}Error: Node.js installation failed.${NC}"
+          exit 1
+        fi
+        echo -e "${GREEN}[+] Node.js installed successfully!${NC}"
+        ;;
+      *)
+        echo ""
+        echo "Please install Node.js manually and run this script again."
+        echo ""
+        echo "Recommended methods:"
+        echo "  - NodeSource: curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash -"
+        echo "  - nvm: https://github.com/nvm-sh/nvm"
+        echo "  - fnm: https://github.com/Schniz/fnm"
+        exit 1
+        ;;
+    esac
   fi
 
   # Allow manual override via environment variable
