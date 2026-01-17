@@ -39,6 +39,9 @@ setup_https() {
     exit 1
   fi
   
+  # Sanitize domain name: remove protocol and trailing slashes
+  DOMAIN_NAME=$(echo "$DOMAIN_NAME" | sed 's|https\?://||g' | sed 's|/.*||g')
+  
   read -p "Enter your email address (for Let's Encrypt notifications): " EMAIL_ADDRESS
   
   if [ -z "$EMAIL_ADDRESS" ]; then
