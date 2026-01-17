@@ -20,6 +20,204 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Function to set up HTTPS with Let's Encrypt
+setup_https() {
+  echo ""
+  echo -e "${BLUE}=== HTTPS Setup ===${NC}"
+  echo ""
+  echo "This will guide you through setting up HTTPS with Let's Encrypt."
+  echo ""
+  echo -e "${YELLOW}Prerequisites:${NC}"
+  echo "  - A domain name pointing to this server's IP address"
+  echo "  - Port 80 and 443 accessible from the internet"
+  echo ""
+  
+  read -p "Enter your domain name (e.g., example.com): " DOMAIN_NAME
+  
+  if [ -z "$DOMAIN_NAME" ]; then
+    echo -e "${RED}Error: Domain name is required for HTTPS setup.${NC}"
+    exit 1
+  fi
+  
+  read -p "Enter your email address (for Let's Encrypt notifications): " EMAIL_ADDRESS
+  
+  if [ -z "$EMAIL_ADDRESS" ]; then
+    echo -e "${RED}Error: Email address is required for Let's Encrypt.${NC}"
+    exit 1
+  fi
+  
+  echo ""
+  echo -e "${YELLOW}Configuration:${NC}"
+  echo "  Domain: $DOMAIN_NAME"
+  echo "  Email:  $EMAIL_ADDRESS"
+  echo ""
+  read -p "Is this correct? [y/N]: " CONFIRM
+  
+  if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
+    echo "Setup cancelled."
+    exit 1
+  fi
+  
+  # Update nginx config with domain name
+  NGINX_CONF="$SCRIPT_DIR/docker/nginx/conf.d/default.conf"
+  
+  echo ""
+  echo "[*] Configuring Nginx for $DOMAIN_NAME..."
+  
+  # Replace yourdomain.com with actual domain in nginx config
+  sed -i "s/yourdomain.com/$DOMAIN_NAME/g" "$NGINX_CONF"
+  
+  # Start containers with nginx and ssl profiles
+  echo "[*] Starting containers..."
+  docker compose --profile nginx --profile ssl up -d --build
+  
+  echo ""
+  echo "[*] Waiting for services to be ready..."
+  sleep 5
+  
+  echo ""
+  echo "[*] Obtaining SSL certificate from Let's Encrypt..."
+  echo ""
+  
+  # Request certificate
+  docker compose run --rm certbot certonly --webroot \
+    --webroot-path=/var/www/certbot \
+    -d "$DOMAIN_NAME" \
+    --email "$EMAIL_ADDRESS" \
+    --agree-tos \
+    --non-interactive
+  
+  CERTBOT_EXIT=$?
+  
+  if [ $CERTBOT_EXIT -ne 0 ]; then
+    echo ""
+    echo -e "${RED}Error: Failed to obtain SSL certificate.${NC}"
+    echo ""
+    echo "Common issues:"
+    echo "  - Domain DNS not pointing to this server"
+    echo "  - Port 80 blocked by firewall"
+    echo "  - Domain already has a certificate (use --force-renewal)"
+    echo ""
+    echo "You can retry manually with:"
+    echo "  docker compose run --rm certbot certonly --webroot \\"
+    echo "    --webroot-path=/var/www/certbot \\"
+    echo "    -d $DOMAIN_NAME \\"
+    echo "    --email $EMAIL_ADDRESS \\"
+    echo "    --agree-tos"
+    echo ""
+    exit 1
+  fi
+  
+  echo ""
+  echo -e "${GREEN}[+] SSL certificate obtained successfully!${NC}"
+  echo ""
+  
+  # Enable HTTPS in nginx config
+  echo "[*] Enabling HTTPS configuration..."
+  
+  # Uncomment HTTPS redirect
+  sed -i 's|# location / {|location / {|g' "$NGINX_CONF"
+  sed -i 's|#     return 301 https://\$host\$request_uri;|    return 301 https://\$host\$request_uri;|g' "$NGINX_CONF"
+  sed -i 's|# }|    }|g' "$NGINX_CONF"
+  
+  # Comment out the HTTP proxy block (keep the acme-challenge location)
+  # This is a bit tricky, so we'll use a Python script for complex sed operations
+  
+  # Actually, let's create a production-ready config
+  cat > "$NGINX_CONF" << EOF
+# ReverseQR Nginx Server Configuration (HTTPS enabled)
+
+upstream reverseqr_backend {
+    server reverseqr:3000;
+    keepalive 64;
+}
+
+# HTTP server - redirect to HTTPS
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $DOMAIN_NAME;
+
+    # Let's Encrypt verification
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    # Redirect all HTTP to HTTPS
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+
+# HTTPS server
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name $DOMAIN_NAME;
+
+    # SSL certificates
+    ssl_certificate /etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem;
+
+    # SSL configuration
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:50m;
+    ssl_session_tickets off;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+
+    # Security headers
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    location / {
+        proxy_pass http://reverseqr_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+        proxy_buffering off;
+        proxy_read_timeout 86400;
+    }
+}
+EOF
+
+  # Restart nginx to apply new config
+  echo "[*] Restarting Nginx with HTTPS configuration..."
+  docker compose --profile nginx restart nginx
+  
+  # Update BASE_URL in .env if it exists
+  if [ -f "$SCRIPT_DIR/.env" ]; then
+    if grep -q "BASE_URL=" "$SCRIPT_DIR/.env"; then
+      sed -i "s|BASE_URL=.*|BASE_URL=https://$DOMAIN_NAME|g" "$SCRIPT_DIR/.env"
+    else
+      echo "BASE_URL=https://$DOMAIN_NAME" >> "$SCRIPT_DIR/.env"
+    fi
+    echo "[*] Updated BASE_URL in .env"
+  fi
+  
+  echo ""
+  echo -e "${GREEN}=== HTTPS Setup Complete ===${NC}"
+  echo ""
+  echo "ReverseQR is now running at: https://$DOMAIN_NAME"
+  echo ""
+  echo -e "${YELLOW}Certificate Renewal:${NC}"
+  echo "Let's Encrypt certificates expire after 90 days."
+  echo "To renew, run: docker compose run --rm certbot renew"
+  echo ""
+  echo "To set up automatic renewal, add this cron job:"
+  echo "  0 3 * * * cd $SCRIPT_DIR && docker compose run --rm certbot renew --quiet && docker compose --profile nginx restart nginx"
+  echo ""
+}
+
 # Function to set up Docker
 setup_docker() {
   echo ""
@@ -64,9 +262,10 @@ setup_docker() {
   echo "How would you like to run Docker?"
   echo ""
   echo -e "  ${GREEN}1)${NC} Localhost only (port 3000)"
-  echo -e "  ${GREEN}2)${NC} With Nginx reverse proxy (ports 80/443)"
+  echo -e "  ${GREEN}2)${NC} With Nginx reverse proxy (HTTP only, port 80)"
+  echo -e "  ${GREEN}3)${NC} With Nginx reverse proxy + HTTPS (ports 80/443)"
   echo ""
-  read -p "Enter your choice [1/2]: " DOCKER_MODE
+  read -p "Enter your choice [1/2/3]: " DOCKER_MODE
   
   cd "$SCRIPT_DIR"
   
@@ -88,8 +287,9 @@ setup_docker() {
       echo -e "${GREEN}=== Docker Setup Complete ===${NC}"
       echo ""
       echo "ReverseQR is now running at: http://localhost"
-      echo ""
-      echo -e "${YELLOW}For HTTPS, see DOCKER.md for SSL certificate setup.${NC}"
+      ;;
+    3)
+      setup_https
       ;;
     *)
       echo "Invalid choice, defaulting to localhost mode..."

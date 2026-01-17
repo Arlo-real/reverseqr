@@ -40,7 +40,7 @@ services:
       # SSL certificates (mount your own or use certbot)
       - ./docker/nginx/ssl:/etc/nginx/ssl:ro
       # Certbot webroot for Let's Encrypt
-      - certbot_webroot:/var/www/certbot:ro
+      - certbot_webroot:/var/www/certbot
       - certbot_certs:/etc/letsencrypt:ro
     depends_on:
       reverseqr:
