@@ -79,8 +79,8 @@ setup_https() {
   echo "[*] Obtaining SSL certificate from Let's Encrypt..."
   echo ""
   
-  # Request certificate (need --profile ssl to access certbot service)
-  docker compose --profile ssl run --rm certbot certonly --webroot \
+  # Request certificate (need --profile ssl to access certbot service, --entrypoint to override default)
+  docker compose --profile ssl run --rm --entrypoint "" certbot certbot certonly --webroot \
     --webroot-path=/var/www/certbot \
     -d "$DOMAIN_NAME" \
     --email "$EMAIL_ADDRESS" \
@@ -99,7 +99,7 @@ setup_https() {
     echo "  - Domain already has a certificate (use --force-renewal)"
     echo ""
     echo "You can retry manually with:"
-    echo "  docker compose --profile ssl run --rm certbot certonly --webroot \\"
+    echo "  docker compose --profile ssl run --rm --entrypoint '' certbot certbot certonly --webroot \\"
     echo "    --webroot-path=/var/www/certbot \\"
     echo "    -d $DOMAIN_NAME \\"
     echo "    --email $EMAIL_ADDRESS \\"
@@ -211,10 +211,10 @@ EOF
   echo ""
   echo -e "${YELLOW}Certificate Renewal:${NC}"
   echo "Let's Encrypt certificates expire after 90 days."
-  echo "To renew, run: docker compose --profile ssl run --rm certbot renew"
+  echo "To renew, run: docker compose --profile ssl run --rm --entrypoint '' certbot certbot renew"
   echo ""
   echo "To set up automatic renewal, add this cron job:"
-  echo "  0 3 * * * cd $SCRIPT_DIR && docker compose --profile ssl run --rm certbot renew --quiet && docker compose --profile nginx restart nginx"
+  echo "  0 3 * * * cd $SCRIPT_DIR && docker compose --profile ssl run --rm --entrypoint '' certbot certbot renew --quiet && docker compose --profile nginx restart nginx"
   echo ""
 }
 
@@ -261,11 +261,10 @@ setup_docker() {
   echo ""
   echo "How would you like to run Docker?"
   echo ""
-  echo -e "  ${GREEN}1)${NC} Localhost only (port 3000)"
-  echo -e "  ${GREEN}2)${NC} With Nginx reverse proxy (HTTP only, port 80)"
-  echo -e "  ${GREEN}3)${NC} With Nginx reverse proxy + HTTPS (ports 80/443)"
+  echo -e "  ${GREEN}1)${NC} Localhost only (port 3000) - for testing"
+  echo -e "  ${GREEN}2)${NC} With Nginx + HTTPS (Let's Encrypt)"
   echo ""
-  read -p "Enter your choice [1/2/3]: " DOCKER_MODE
+  read -p "Enter your choice [1/2]: " DOCKER_MODE
   
   cd "$SCRIPT_DIR"
   
@@ -280,15 +279,6 @@ setup_docker() {
       echo "ReverseQR is now running at: http://localhost:3000"
       ;;
     2)
-      echo ""
-      echo "[*] Building and starting ReverseQR with Nginx..."
-      docker compose --profile nginx up -d --build
-      echo ""
-      echo -e "${GREEN}=== Docker Setup Complete ===${NC}"
-      echo ""
-      echo "ReverseQR is now running at: http://localhost"
-      ;;
-    3)
       setup_https
       ;;
     *)
