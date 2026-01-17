@@ -546,6 +546,17 @@ EOF
     exit 0
   fi
 
+  # Install npm dependencies
+  echo "[*] Installing npm dependencies..."
+  cd "$SCRIPT_DIR"
+  sudo -u "$CURRENT_USER" npm install --omit=dev
+  if [ $? -ne 0 ]; then
+    echo -e "${RED}Error: Failed to install npm dependencies.${NC}"
+    exit 1
+  fi
+  echo -e "${GREEN}[+] Dependencies installed successfully!${NC}"
+  echo ""
+
   # Install the service file
   echo "[*] Installing service file to /etc/systemd/system/${SERVICE_NAME}.service..."
   cp -v "$SERVICE_FILE" "/etc/systemd/system/${SERVICE_NAME}.service"
