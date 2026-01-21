@@ -1,4 +1,5 @@
 node_modules/
+docker/
 package-lock.json
 reverseqr.service
 .env
