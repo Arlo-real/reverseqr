@@ -143,10 +143,10 @@ Contributions are welcome! Please feel free to submit issues or pull requests.
 
 ## Basic troubleshooting
 
-For issues or questions:
-1. Check the SETUP.md for deployment details
-2. Review server logs with `pm2 logs reverseqr`
-3. Test connectivity with `/health` endpoint
+1. Test connectivity with `/health` endpoint
+2. Make sure you are using localhost, not your local IP
+3. Try using the setupscript
+4. Reboot yourself (sleep) and try again
 
 
 **Made with passion in Munich, Germany**
