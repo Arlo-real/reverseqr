@@ -1,6 +1,5 @@
 # Docker Setup for ReverseQR
 
-This guide explains how to run ReverseQR using Docker.
 
 ## Prerequisites
 
@@ -14,6 +13,15 @@ This guide explains how to run ReverseQR using Docker.
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 newgrp docker
+
+```
+## Configuration
+
+Copy the example environment file and customize:
+
+```bash
+cp .env.example .env
+nano .env
 ```
 
 ## Quick Start (Localhost)
@@ -33,22 +41,6 @@ docker compose down
 
 The application will be available at `http://localhost:3000`.
 
-## Configuration
-
-Copy the example environment file and customize:
-
-```bash
-cp .env.example .env
-```
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `BASE_URL` | `http://localhost:3000` | Public URL for QR codes |
-| `HOST_PORT` | `3000` | Port exposed on host machine |
-| `MAX_FILE_SIZE` | `500mb` | Maximum upload file size |
-| `FILE_EXPIRY_MINUTES` | `60` | Time before files are deleted |
 
 ## Running with Nginx
 
@@ -147,19 +139,9 @@ docker compose up -d --build
 
 ## Data Persistence
 
-Uploaded files are stored in a Docker volume called `uploads_data`. This persists data between container restarts.
+Uploaded files are **temporarily** stored in a Docker volume called `uploads_data`. 
 
-To backup uploads:
-```bash
-docker run --rm -v reverseqr_uploads_data:/data -v $(pwd):/backup alpine \
-  tar cvf /backup/uploads-backup.tar /data
-```
-
-To restore:
-```bash
-docker run --rm -v reverseqr_uploads_data:/data -v $(pwd):/backup alpine \
-  tar xvf /backup/uploads-backup.tar -C /
-```
+**Important**: Files are automatically deleted after the retention period specified in your `.env` file (`FILE_RETENTION_TIME`, default: 30 minutes). The volume persists between container restarts, but the cleanup process runs regularly to remove expired files.
 
 ## Troubleshooting
 
@@ -182,19 +164,4 @@ docker compose logs reverseqr
 
 # Verify the build
 docker compose build --no-cache
-```
-
-## Architecture
-
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│                 │     │                 │     │                 │
-│     Client      │────▶│     Nginx       │────▶│   ReverseQR     │
-│                 │     │   (optional)    │     │   (Node.js)     │
-│                 │     │                 │     │                 │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-        │                                               │
-        │                                               │
-        └───────────────────────────────────────────────┘
-                    Direct (localhost mode)
 ```

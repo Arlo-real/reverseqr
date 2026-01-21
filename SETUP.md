@@ -8,6 +8,9 @@
 > [!TIP]
 > You can skip all this by using setup-script.sh
 
+> [!NOTE]
+> If you want to use docker, please see the docker.md file
+
 
 ## 1. Configure Environment
 
@@ -100,11 +103,36 @@ sudo systemctl start certbot.timer
 ```
 
 ## 6. Add to autostart using systemd
-```bash
-# Copy the service file to systemd
-sudo ./setup-service.sh
+
+Create a systemd service file at `/etc/systemd/system/reverseqr.service`:
+
+```ini
+[Unit]
+Description=ReverseQR - Secure File & Text Sharing
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/path/to/reverseqr
+ExecStart=/usr/bin/node src/server.js
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
 ```
 
+**Note**: Replace `/path/to/reverseqr` with the actual path to your installation.
+
+Enable and start the service:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable reverseqr
+sudo systemctl start reverseqr
+```
 
 ### Useful commands:
 

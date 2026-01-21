@@ -1,5 +1,0 @@
-# Place your SSL certificates here for production use
-# - fullchain.pem
-# - privkey.pem
-#
-# Or use the certbot service to generate Let's Encrypt certificates

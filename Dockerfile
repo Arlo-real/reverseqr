@@ -15,12 +15,10 @@ COPY public/ ./public/
 # Create uploads directory
 RUN mkdir -p /app/public/uploads
 
-# Set environment variables
+# Set environment variables (can be overridden by docker-compose.yml or .env)
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Expose the port
-EXPOSE 3000
 
 # Run the application
 CMD ["node", "src/server.js"]
