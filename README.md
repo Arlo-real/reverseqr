@@ -105,23 +105,28 @@ Please follow the instructions in SETUP.md
 ## API Endpoints
 
 ### Session Management
-- `POST /api/session/create` - Create receiver session
-- `POST /api/session/join` - Join as sender
+- `POST /api/session/create` - Create receiver session with strict rate limiting
+- `POST /api/session/join` - Join existing session as sender (only one sender per session)
+- `GET /api/session/status/:code` - Get session status and DH public keys
 
-### Key Exchange
-- `POST /api/dh/exchange` - Exchange DH public keys
+### Messaging & Files
+- `POST /api/message/send` - Send encrypted message or file
+- `GET /api/message/retrieve/:code` - Retrieve encrypted messages for a connection
+- `GET /api/file/download/:filename` - Download encrypted file
 
-### Messaging
-- `POST /api/message/send` - Send encrypted message/files
-- `GET /api/message/retrieve/:code` - Retrieve messages
-- `GET /api/file/download/:filename` - Download file
+### Configuration & Utilities
+- `GET /api/config` - Get server configuration (max sizes, timeouts, etc.)
+- `GET /api/429-images` - List images for 429 rate limit error page
+- `GET /api/404-images` - List images for 404 error page
+- `GET /health` - Server health check
 
-### Utilities
-- `GET /health` - Health check
-- `GET /` - Receiver page
-- `GET /sender` - Sender page
-- `GET /receiver` - Alternative receiver
-- `GET /join?code=` - QR redirect
+### Pages
+- `GET /` - Receiver page displaying QR code
+- `GET /sender` - Sender page to enter connection code
+- `GET /join?code=` - Redirects from to sender page and auto-connects
+
+### WebSocket
+- WebSocket server for real-time notifications (message available, keys exchanged, etc.)
 
 
 
