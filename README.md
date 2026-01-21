@@ -114,7 +114,7 @@ Please follow the instructions in SETUP.md
 ### Messaging
 - `POST /api/message/send` - Send encrypted message/files
 - `GET /api/message/retrieve/:code` - Retrieve messages
-- `GET /api/file/download/:filename` - Download encrypted file
+- `GET /api/file/download/:filename` - Download file
 
 ### Utilities
 - `GET /health` - Health check
