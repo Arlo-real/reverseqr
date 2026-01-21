@@ -1,11 +1,17 @@
 # Production Setup Guide
 
+
 ## Prerequisites
 - Ubuntu/Debian server with sudo access
 - Domain name pointing to your server
-- Node.js and npm installed: get it [here](https://nodejs.org/en/download)
+
+> [!TIP]
+> You can skip all this by using setup-script.sh
+
 
 ## 1. Configure Environment
+
+Install node.js and npm. Get it [here](https://nodejs.org/en/download)
 
 ```bash
 cd /path/to/reverseqr
