@@ -129,24 +129,6 @@ Please follow the instructions in SETUP.md
 - WebSocket server for real-time notifications (message available, keys exchanged, etc.)
 
 
-
-## Monitoring
-
-### Check Status
-```bash
-pm2 status
-```
-
-### View Logs
-```bash
-pm2 logs reverseqr
-```
-
-### Monitor Resources
-```bash
-pm2 monit
-```
-
 ## Limitations & Future Enhancements
 
 ### Current Limitations
