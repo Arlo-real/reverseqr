@@ -181,4 +181,5 @@ cat .env | grep PORT
 - **SSL errors**: Verify certificate paths in nginx config
 - **File uploads fail**: Check permissions on `public/uploads/` directory
 - **QR code not working**: Ensure `BASE_URL` in `.env` matches your domain
+- **QR code and connection code not generating**: Make sure https in being used
 - **Service won't start**: Check node path with `which node` and update the service file
