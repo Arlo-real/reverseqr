@@ -32,41 +32,15 @@ Edit `.env` and set:
 npm install
 ```
 
-## 3. Set Up SSL Certificate
+## 3. Configure Nginx
 
-```bash
-sudo apt update
-sudo apt install certbot python3-certbot-nginx -y
-
-sudo certbot certonly --standalone -d yourdomain.com
-```
-
-Note the certificate paths (typically `/etc/letsencrypt/live/yourdomain.com/`)
-
-## 4. Configure Nginx
-
-Edit `/etc/nginx/sites-available/reverseqr`:
+First, create the nginx site configuration at `/etc/nginx/sites-available/reverseqr`:
 
 ```nginx
 server {
     listen 80;
     listen [::]:80;
     server_name yourdomain.com;
-
-    # Redirect HTTP to HTTPS
-    return 301 https://$server_name$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name yourdomain.com;
-
-    ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
-
-    # Security headers
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     location / {
         proxy_pass http://127.0.0.1:3000;
@@ -82,18 +56,32 @@ server {
 }
 ```
 
-Enable the site:
-```bash
-sudo ln -s /etc/nginx/sites-available/reverseqr /etc/nginx/sites-enabled/
-```
+**Note**: Replace `:3000` with the actual port opened on the server
 
-Test and restart Nginx:
+Remove the default nginx site, enable the site and restart nginx:
 ```bash
+sudo rm /etc/nginx/sites-enabled/default
+sudo ln -s /etc/nginx/sites-available/reverseqr /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl restart nginx
 ```
 
+## 4. Set Up SSL Certificate
 
+Install certbot and obtain a certificate using the nginx plugin:
+
+```bash
+sudo apt update
+sudo apt install certbot python3-certbot-nginx -y
+sudo certbot --nginx -d yourdomain.com
+```
+
+Certbot will automatically:
+- Obtain the SSL certificate
+- Configure nginx to use HTTPS
+- Set up HTTP to HTTPS redirect
+
+Your certificates will be stored at `/etc/letsencrypt/live/yourdomain.com/`
 
 ## 5. Auto-Renew SSL Certificates
 
@@ -104,6 +92,11 @@ sudo systemctl start certbot.timer
 
 ## 6. Add to autostart using systemd
 
+First, find your node executable path:
+```bash
+which node
+```
+
 Create a systemd service file at `/etc/systemd/system/reverseqr.service`:
 
 ```ini
@@ -113,9 +106,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=www-data
+User=yourusername
 WorkingDirectory=/path/to/reverseqr
-ExecStart=/usr/bin/node src/server.js
+ExecStart=/path/to/node src/server.js
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
@@ -125,7 +118,11 @@ StandardError=journal
 WantedBy=multi-user.target
 ```
 
-**Note**: Replace `/path/to/reverseqr` with the actual path to your installation.
+**Important**: Replace the following:
+- `/path/to/reverseqr` - Your installation directory (e.g., `/home/username/reverseqr`)
+- `/path/to/node` - Output from `which node` (e.g., `/home/username/.nvm/versions/node/v20.18.0/bin/node`)
+- `yourusername` - Your Linux username (run `whoami` to check)
+
 
 Enable and start the service:
 ```bash
@@ -161,6 +158,27 @@ sudo systemctl disable reverseqr
 
 ## Troubleshooting
 
+### 502 Bad Gateway
+This means nginx can't reach the Node.js server:
+```bash
+# Check if the service is running
+sudo systemctl status reverseqr
+
+# Check server logs for errors
+sudo journalctl -u reverseqr -n 50
+
+# Make sure the default nginx site is removed
+sudo rm /etc/nginx/sites-enabled/default
+
+# Test if the server responds locally
+curl http://localhost:3000 # replace with your port
+
+# Verify PORT in .env matches nginx proxy_pass
+cat .env | grep PORT
+```
+
+### Common issues
 - **SSL errors**: Verify certificate paths in nginx config
 - **File uploads fail**: Check permissions on `public/uploads/` directory
 - **QR code not working**: Ensure `BASE_URL` in `.env` matches your domain
+- **Service won't start**: Check node path with `which node` and update the service file

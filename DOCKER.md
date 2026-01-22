@@ -139,9 +139,7 @@ docker compose up -d --build
 
 ## Data Persistence
 
-Uploaded files are **temporarily** stored in a Docker volume called `uploads_data`. 
-
-**Important**: Files are automatically deleted after the retention period specified in your `.env` file (`FILE_RETENTION_TIME`, default: 30 minutes). The volume persists between container restarts, but the cleanup process runs regularly to remove expired files.
+Uploaded files are temporarily stored in a Docker volume called `uploads_data` and are automatically deleted after the retention period specified in your `.env` file (`FILE_RETENTION_TIME`, default: 30 minutes). The volume persists between container restarts, but the cleanup process runs regularly to remove expired files.
 
 ## Troubleshooting
 
