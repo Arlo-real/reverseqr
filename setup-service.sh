@@ -544,25 +544,10 @@ EOF
   echo "[DEBUG] Service file generated successfully at $SERVICE_FILE"
   echo ""
 
-  # Check if running with sudo
-  if [[ $EUID -ne 0 ]]; then
-    echo "This script needs sudo to install the service file."
-    echo ""
-    echo "To install the service, run:"
-    echo "  sudo bash $0"
-    echo ""
-    echo "Or manually install with:"
-    echo "  sudo cp $SERVICE_FILE /etc/systemd/system/${SERVICE_NAME}.service"
-    echo "  sudo systemctl daemon-reload"
-    echo "  sudo systemctl enable ${SERVICE_NAME}"
-    echo "  sudo systemctl start ${SERVICE_NAME}"
-    exit 0
-  fi
-
   # Install npm dependencies
   echo "[*] Installing npm dependencies..."
   cd "$SCRIPT_DIR"
-  sudo -u "$CURRENT_USER" npm install --omit=dev
+  npm install --omit=dev
   if [ $? -ne 0 ]; then
     echo -e "${RED}Error: Failed to install npm dependencies.${NC}"
     exit 1
@@ -570,28 +555,86 @@ EOF
   echo -e "${GREEN}[+] Dependencies installed successfully!${NC}"
   echo ""
 
-  # Install the service file
-  echo "[*] Installing service file to /etc/systemd/system/${SERVICE_NAME}.service..."
-  cp -v "$SERVICE_FILE" "/etc/systemd/system/${SERVICE_NAME}.service"
-
-  # Reload systemd daemon
-  echo "[*] Reloading systemd daemon..."
-  systemctl daemon-reload
-
-  # Enable the service
-  echo "[*] Enabling ${SERVICE_NAME} service to start on boot..."
-  systemctl enable "${SERVICE_NAME}"
-
-  # Start the service
-  echo "[*] Starting ${SERVICE_NAME} service..."
-  systemctl start "${SERVICE_NAME}"
-
-  echo ""
-  echo -e "${GREEN}=== Node.js Service Installed ===${NC}"
+  echo -e "${GREEN}=== Node.js Setup Complete ===${NC}"
   echo ""
   
-  # Ask about HTTPS setup
-  echo "The server is now running on port 3000 (HTTP)."
+  # Ask about autostart
+  if [[ $EUID -eq 0 ]]; then
+    echo "The server is ready to run."
+    echo ""
+    read -p "Would you like to enable autostart on boot? [Y/n]: " ENABLE_AUTOSTART
+    
+    if [[ ! "$ENABLE_AUTOSTART" =~ ^[Nn]$ ]]; then
+      echo ""
+      echo "[*] Installing service file to /etc/systemd/system/${SERVICE_NAME}.service..."
+      cp -v "$SERVICE_FILE" "/etc/systemd/system/${SERVICE_NAME}.service"
+
+      # Reload systemd daemon
+      echo "[*] Reloading systemd daemon..."
+      systemctl daemon-reload
+
+      # Enable the service
+      echo "[*] Enabling ${SERVICE_NAME} service to start on boot..."
+      systemctl enable "${SERVICE_NAME}"
+
+      # Start the service
+      echo "[*] Starting ${SERVICE_NAME} service..."
+      systemctl start "${SERVICE_NAME}"
+      
+      echo ""
+      echo -e "${GREEN}[+] Service installed and started!${NC}"
+      SERVICE_INSTALLED=true
+    else
+      echo ""
+      echo "[*] Autostart not enabled."
+      echo "To start the server manually, run:"
+      echo "  node $SCRIPT_DIR/src/server.js"
+      echo "or"
+      echo "  npm start  # (from $SCRIPT_DIR)"
+      SERVICE_INSTALLED=false
+    fi
+  else
+    echo "[*] This script is not running with sudo."
+    echo ""
+    echo "To enable autostart, run this script with sudo:"
+    echo "  sudo bash $0"
+    echo ""
+    echo "Or manually install with:"
+    echo "  sudo cp $SERVICE_FILE /etc/systemd/system/${SERVICE_NAME}.service"
+    echo "  sudo systemctl daemon-reload"
+    echo "  sudo systemctl enable ${SERVICE_NAME}"
+    echo "  sudo systemctl start ${SERVICE_NAME}"
+    echo ""
+    echo "To start the server manually, run:"
+    echo "  node $SCRIPT_DIR/src/server.js"
+    SERVICE_INSTALLED=false
+  fi
+  
+  echo ""
+  
+  # Ask about HTTPS setup only if service is installed
+  if [ "$SERVICE_INSTALLED" = true ]; then
+    read -p "Would you like to set up HTTPS with nginx and Let's Encrypt? [Y/n]: " SETUP_HTTPS
+    
+    if [[ ! "$SETUP_HTTPS" =~ ^[Nn]$ ]]; then
+      setup_nodejs_https
+    else
+      echo ""
+      echo "You can access ReverseQR at: http://localhost:3000"
+      echo ""
+      echo -e "${YELLOW}Note: HTTPS is required for WebRTC file transfers to work over the internet.${NC}"
+      echo "Run this script again to set up HTTPS later."
+    fi
+    
+    echo ""
+    echo "Service management commands:"
+    echo "  sudo systemctl status ${SERVICE_NAME}       # Check status"
+    echo "  sudo systemctl start ${SERVICE_NAME}        # Start service"
+    echo "  sudo systemctl stop ${SERVICE_NAME}         # Stop service"
+    echo "  sudo systemctl restart ${SERVICE_NAME}      # Restart service"
+    echo "  sudo systemctl disable ${SERVICE_NAME}      # Disable auto-start"
+    echo "  sudo journalctl -u ${SERVICE_NAME} -f       # View live logs"
+  fi
   echo ""
   read -p "Would you like to set up HTTPS with nginx and Let's Encrypt? [Y/n]: " SETUP_HTTPS
   
