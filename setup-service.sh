@@ -620,6 +620,22 @@ setup_nodejs() {
   echo "Installation directory: $SCRIPT_DIR"
   echo "User: $CURRENT_USER"
   echo "Node executable: $NODE_PATH"
+  # Check/create .env file before installing service
+  echo "[*] Checking .env configuration..."
+  if [ ! -f "$SCRIPT_DIR/.env" ]; then
+    if [ -f "$SCRIPT_DIR/.env.example" ]; then
+      echo "[*] Creating .env from .env.example..."
+      cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env"
+      chown "$CURRENT_USER:$CURRENT_USER" "$SCRIPT_DIR/.env"
+      chmod 600 "$SCRIPT_DIR/.env"
+      echo -e "${GREEN}[+] .env file created${NC}"
+    else
+      echo -e "${RED}[ERROR] No .env or .env.example file found in $SCRIPT_DIR${NC}" >&2
+      exit 1
+    fi
+  else
+    echo "[*] .env file already exists"
+  fi
   echo ""
 
   echo "[DEBUG] Generating service file at $SERVICE_FILE"
@@ -724,8 +740,26 @@ EOF
 
   # Start the service
   echo "[*] Starting ${SERVICE_NAME} service..."
-  systemctl start "${SERVICE_NAME}"
-
+  systemctl start "${SERVICE_NAME}" || {
+    echo -e "${RED}[ERROR] Failed to start service${NC}" >&2
+    echo "Checking service status..." >&2
+    systemctl status reverseqr >&2
+    echo "" >&2
+    echo "Checking if .env file exists:" >&2
+    ls -la "$SCRIPT_DIR/.env" >&2
+    echo "" >&2
+    echo "Service file contents:" >&2
+    cat "/etc/systemd/system/${SERVICE_NAME}.service" >&2
+    exit 1
+  }
+  
+  # Wait a bit and check if service is running
+  sleep 2
+  if ! systemctl is-active --quiet reverseqr; then
+    echo -e "${YELLOW}[WARNING] Service may not have started successfully${NC}"
+    echo "Checking logs..." >&2
+    systemctl status reverseqr >&2
+  fi
   echo ""
   echo -e "${GREEN}=== Node.js Service Installed ===${NC}"
   echo ""
