@@ -1,14 +1,18 @@
-
 #!/bin/bash
 
 # ReverseQR Service Setup Script
 # This script lets the user choose between Docker or Node.js server setup
-# Warning: this script sets up autostart
 
 set -euo pipefail
 
-# Error handling trap
-trap 'echo "" >&2; echo -e "\033[0;31m[ERROR] Script failed on line $LINENO\033[0m" >&2; exit 1' ERR
+# Error handling
+handle_error() {
+  local line=$1
+  echo "" >&2
+  echo -e "${RED}[ERROR] Script failed on line $line${NC}" >&2
+  exit 1
+}
+trap 'handle_error $LINENO' ERR
 
 # Ensure output is not buffered
 export PYTHONUNBUFFERED=1
