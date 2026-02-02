@@ -429,6 +429,10 @@ setup_docker() {
   
   cd "$SCRIPT_DIR"
   
+  # Ensure docker/nginx directories exist for compose volumes
+  mkdir -p "$SCRIPT_DIR/docker/nginx/conf.d"
+  mkdir -p "$SCRIPT_DIR/docker/nginx/ssl"
+  
   case "$DOCKER_MODE" in
     1)
       echo ""
