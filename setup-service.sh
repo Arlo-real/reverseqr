@@ -687,19 +687,14 @@ EOF
   NPM_PATH="${NODE_DIR}/npm"
   
   if [ ! -x "$NPM_PATH" ]; then
-    # Try common locations
-    if command -v npm >/dev/null 2>&1; then
-      NPM_PATH=$(which npm)
-    else
-      echo -e "${RED}[ERROR] npm not found at $NPM_PATH or in PATH${NC}" >&2
-      echo "npm should be installed alongside node." >&2
-      exit 1
-    fi
+    echo -e "${RED}[ERROR] npm not found at $NPM_PATH${NC}" >&2
+    exit 1
   fi
   
   echo "[DEBUG] Using npm at: $NPM_PATH"
   
-  if ! sudo -u "$CURRENT_USER" "$NPM_PATH" install --omit=dev; then
+  # Use full path to node so npm script can find it
+  if ! sudo -u "$CURRENT_USER" bash -c "cd '$SCRIPT_DIR' && export PATH='$NODE_DIR:\$PATH' && '$NPM_PATH' install --omit=dev"; then
     echo -e "${RED}[ERROR] Failed to install npm dependencies.${NC}" >&2
     echo "Troubleshooting tips:" >&2
     echo "  - Check npm logs: cat ~/.npm/_logs/*.log" >&2
