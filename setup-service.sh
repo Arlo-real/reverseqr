@@ -1,7 +1,9 @@
+
 #!/bin/bash
 
 # ReverseQR Service Setup Script
 # This script lets the user choose between Docker or Node.js server setup
+# Warning: this script sets up autostart
 
 set -euo pipefail
 

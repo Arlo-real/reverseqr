@@ -32,9 +32,16 @@ Edit `.env` and set:
 npm install
 ```
 
-## 3. Configure Nginx
 
-First, create the nginx site configuration at `/etc/nginx/sites-available/reverseqr`:
+## 3. Install and configure Nginx
+
+```bash
+sudo apt update
+sudo apt install nginx -y
+sudo systemctl enable nginx  #add to autostart
+```
+
+Create the nginx site configuration at `/etc/nginx/sites-available/reverseqr`:
 
 ```nginx
 server {
@@ -83,7 +90,7 @@ Certbot will automatically:
 
 Your certificates will be stored at `/etc/letsencrypt/live/yourdomain.com/`
 
-## 5. Auto-Renew SSL Certificates
+## 5. Setup auto-renew SSL certificates
 
 ```bash
 sudo systemctl enable certbot.timer
@@ -175,6 +182,13 @@ curl http://localhost:3000 # replace with your port
 
 # Verify PORT in .env matches nginx proxy_pass
 cat .env | grep PORT
+```
+
+### Nginx not running
+Ubuntu/Debian typically already starts nginx automatically after installation.
+If it does not, run:
+```bash
+sudo systemctl start nginx
 ```
 
 ### Common issues
