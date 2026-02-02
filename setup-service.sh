@@ -148,8 +148,14 @@ setup_https() {
   echo ""
   echo "[*] Configuring Nginx for $DOMAIN_NAME..."
   
-  # Replace yourdomain.com with actual domain in nginx config
-  sed -i "s/yourdomain.com/$DOMAIN_NAME/g" "$NGINX_CONF"
+  # Check if nginx config exists before trying to modify it
+  if [ -f "$NGINX_CONF" ]; then
+    echo "[DEBUG] Found nginx config at $NGINX_CONF, updating domain..."
+    sed -i "s/yourdomain.com/$DOMAIN_NAME/g" "$NGINX_CONF"
+  else
+    echo "[DEBUG] Nginx config template not found at $NGINX_CONF"
+    echo "[*] Config will be generated during container startup"
+  fi
   
   # Start containers with nginx and ssl profiles
   echo "[*] Starting containers..."
@@ -950,6 +956,11 @@ EOF
 
 # Main menu
 echo -e "${BLUE}=== ReverseQR Setup ===${NC}"
+echo "Please note that this script will automaticaly setup autortart using systemd"
+echo "if this is not instended, please only do:"
+echo "npm install && npm start"
+echo "also, the .env file should already be custormized before running this script"
+echo ""
 echo ""
 echo "Choose how to run ReverseQR:"
 echo ""
