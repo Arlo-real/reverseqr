@@ -681,11 +681,29 @@ EOF
   # Install npm dependencies
   echo "[*] Installing npm dependencies..."
   cd "$SCRIPT_DIR"
-  if ! sudo -u "$CURRENT_USER" npm install --omit=dev; then
+  
+  # Find npm in the same directory as node
+  NODE_DIR=$(dirname "$NODE_PATH")
+  NPM_PATH="${NODE_DIR}/npm"
+  
+  if [ ! -x "$NPM_PATH" ]; then
+    # Try common locations
+    if command -v npm >/dev/null 2>&1; then
+      NPM_PATH=$(which npm)
+    else
+      echo -e "${RED}[ERROR] npm not found at $NPM_PATH or in PATH${NC}" >&2
+      echo "npm should be installed alongside node." >&2
+      exit 1
+    fi
+  fi
+  
+  echo "[DEBUG] Using npm at: $NPM_PATH"
+  
+  if ! sudo -u "$CURRENT_USER" "$NPM_PATH" install --omit=dev; then
     echo -e "${RED}[ERROR] Failed to install npm dependencies.${NC}" >&2
     echo "Troubleshooting tips:" >&2
     echo "  - Check npm logs: cat ~/.npm/_logs/*.log" >&2
-    echo "  - Try clearing cache: npm cache clean --force" >&2
+    echo "  - Try clearing cache: $NPM_PATH cache clean --force" >&2
     echo "  - Ensure disk space: df -h" >&2
     exit 1
   fi
