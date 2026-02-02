@@ -433,6 +433,86 @@ setup_docker() {
   mkdir -p "$SCRIPT_DIR/docker/nginx/conf.d"
   mkdir -p "$SCRIPT_DIR/docker/nginx/ssl"
   
+  # Create main nginx config if it doesn't exist
+  if [ ! -f "$SCRIPT_DIR/docker/nginx/nginx.conf" ]; then
+    echo "[*] Creating nginx.conf..."
+    cat > "$SCRIPT_DIR/docker/nginx/nginx.conf" << 'NGINX_EOF'
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log warn;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+    use epoll;
+    multi_accept on;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log /var/log/nginx/access.log main;
+
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types text/plain text/css text/xml text/javascript application/json application/javascript application/xml+rss;
+
+    client_max_body_size 500M;
+
+    include /etc/nginx/conf.d/*.conf;
+}
+NGINX_EOF
+  fi
+  
+  # Create default server config if it doesn't exist
+  if [ ! -f "$SCRIPT_DIR/docker/nginx/conf.d/default.conf" ]; then
+    echo "[*] Creating default nginx server config..."
+    cat > "$SCRIPT_DIR/docker/nginx/conf.d/default.conf" << 'CONF_EOF'
+upstream reverseqr_backend {
+    server reverseqr:3000;
+    keepalive 64;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name _;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        proxy_pass http://reverseqr_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_buffering off;
+        
+        proxy_read_timeout 86400;
+    }
+}
+CONF_EOF
+  fi
+  
   case "$DOCKER_MODE" in
     1)
       echo ""
