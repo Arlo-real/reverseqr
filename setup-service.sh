@@ -3,7 +3,10 @@
 # ReverseQR Service Setup Script
 # This script lets the user choose between Docker or Node.js server setup
 
-set -e
+set -euo pipefail
+
+# Error handling trap
+trap 'echo "" >&2; echo -e "\033[0;31m[ERROR] Script failed on line $LINENO\033[0m" >&2; exit 1' ERR
 
 # Ensure output is not buffered
 export PYTHONUNBUFFERED=1
@@ -19,6 +22,42 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Helper function to check if command exists
+check_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo -e "${RED}[ERROR] Required command not found: $1${NC}" >&2
+    echo "Please install $1 and try again." >&2
+    exit 1
+  fi
+}
+
+# Helper function to wait for port to be in use
+wait_for_port() {
+  local port=$1
+  local timeout=${2:-30}
+  local elapsed=0
+  while ! nc -z 127.0.0.1 "$port" 2>/dev/null; do
+    if [ $elapsed -ge $timeout ]; then
+      echo -e "${RED}[ERROR] Port $port did not become available within ${timeout}s${NC}" >&2
+      return 1
+    fi
+    sleep 1
+    ((elapsed++))
+  done
+  return 0
+}
+
+# Helper function to check if port is already in use
+check_port_free() {
+  local port=$1
+  if ss -ltnp 2>/dev/null | grep -q ":$port "; then
+    echo -e "${YELLOW}[WARNING] Port $port appears to be in use${NC}" >&2
+    ss -ltnp 2>/dev/null | grep ":$port " | head -n1 >&2
+    return 1
+  fi
+  return 0
+}
 
 # Function to set up HTTPS with Let's Encrypt
 setup_https() {
@@ -70,6 +109,14 @@ setup_https() {
   # Sanitize domain name: remove protocol and trailing slashes
   DOMAIN_NAME=$(echo "$DOMAIN_NAME" | sed 's|https\?://||g' | sed 's|/.*||g')
   
+  # Check if domain DNS is resolvable
+  echo "[*] Checking DNS resolution for $DOMAIN_NAME..."
+  if ! nslookup "$DOMAIN_NAME" >/dev/null 2>&1; then
+    echo -e "${YELLOW}[WARNING] Could not resolve $DOMAIN_NAME via DNS${NC}"
+    echo "Make sure your domain is pointing to this server's IP address."
+    echo ""
+  fi
+  
   read -p "Enter your email address (for Let's Encrypt notifications): " EMAIL_ADDRESS
   
   if [ -z "$EMAIL_ADDRESS" ]; then
@@ -104,8 +151,33 @@ setup_https() {
   
   echo ""
   echo "[*] Waiting for services to be ready..."
-  sleep 5
   
+  # Wait for reverseqr to be ready
+  echo "[*] Waiting for reverseqr application..."
+  local max_wait=60
+  local elapsed=0
+  while [ $elapsed -lt $max_wait ]; do
+    if docker compose logs reverseqr 2>/dev/null | grep -q "Running initial cleanup"; then
+      echo -e "${GREEN}[+] ReverseQR is ready${NC}"
+      break
+    fi
+    sleep 2
+    ((elapsed+=2))
+  done
+  
+  if [ $elapsed -ge $max_wait ]; then
+    echo -e "${YELLOW}[WARNING] ReverseQR may not be ready, but continuing...${NC}"
+    docker compose logs reverseqr | tail -20
+  fi
+  
+  # Wait for nginx
+  echo "[*] Waiting for nginx..."
+  if ! wait_for_port 80 30; then
+    echo -e "${RED}[ERROR] nginx failed to start on port 80${NC}" >&2
+    docker compose logs nginx
+    exit 1
+  fi
+  echo -e "${GREEN}[+] Services are ready${NC}"
   echo ""
   echo "[*] Obtaining SSL certificate from Let's Encrypt..."
   echo ""
@@ -122,21 +194,24 @@ setup_https() {
   
   if [ $CERTBOT_EXIT -ne 0 ]; then
     echo ""
-    echo -e "${RED}Error: Failed to obtain SSL certificate.${NC}"
+    echo -e "${RED}[ERROR] Failed to obtain SSL certificate.${NC}"
     echo ""
-    echo "Common issues:"
-    echo "  - Domain DNS not pointing to this server"
-    echo "  - Port 80 blocked by firewall"
-    echo "  - Domain already has a certificate (use --force-renewal)"
+    echo "Common issues and solutions:"
+    echo "  1. Domain DNS not pointing to this server:"
+    echo "     nslookup $DOMAIN_NAME"
+    echo ""
+    echo "  2. Port 80 blocked by firewall:"
+    echo "     sudo ufw allow 80/tcp"
+    echo ""
+    echo "  3. Another service using port 80:"
+    echo "     sudo ss -ltnp | grep :80"
+    echo ""
+    echo "  4. View certbot logs:"
+    echo "     sudo tail -50 /var/log/letsencrypt/letsencrypt.log"
     echo ""
     echo "You can retry manually with:"
-    echo "  docker compose --profile ssl run --rm --entrypoint '' certbot certbot certonly --webroot \\"
-    echo "    --webroot-path=/var/www/certbot \\"
-    echo "    -d $DOMAIN_NAME \\"
-    echo "    --email $EMAIL_ADDRESS \\"
-    echo "    --agree-tos"
-    echo ""
-    exit 1
+    echo "  sudo certbot --nginx -d $DOMAIN_NAME"
+    return 1
   fi
   
   echo ""
@@ -287,6 +362,9 @@ setup_docker() {
   echo -e "${BLUE}=== Docker Setup ===${NC}"
   echo ""
   
+  # Check required system commands
+  check_cmd curl
+  
   # Check if Docker is installed
   if ! command -v docker &> /dev/null; then
     echo -e "${YELLOW}Docker is not installed.${NC}"
@@ -303,6 +381,14 @@ setup_docker() {
       echo "  curl -fsSL https://get.docker.com | sh"
       exit 1
     fi
+  fi
+  
+  # Verify docker command works
+  if ! docker ps >/dev/null 2>&1; then
+    echo -e "${RED}[ERROR] docker command failed. You may need to add your user to docker group:${NC}" >&2
+    echo "  sudo usermod -aG docker \$USER" >&2
+    echo "  Then log out and back in." >&2
+    exit 1
   fi
   
   # Check if docker compose is available
@@ -368,7 +454,28 @@ setup_nodejs() {
   echo -e "${BLUE}=== Node.js + systemd Setup ===${NC}"
   echo ""
   
-  # Stop any running Docker containers from previous setup
+  # Ask about deployment mode
+  echo "How do you want to deploy ReverseQR?"
+  echo ""
+  echo -e "  ${GREEN}1)${NC} Local Testing - HTTP only, localhost:3000 (development)"
+  echo -e "  ${GREEN}2)${NC} Production - HTTPS with domain name"
+  echo ""
+  read -p "Enter your choice [1/2]: " DEPLOY_MODE
+  
+  case "$DEPLOY_MODE" in
+    1|local|testing)
+      DEPLOY_LOCAL=true
+      ;;
+    2|prod|production)
+      DEPLOY_LOCAL=false
+      ;;
+    *)
+      echo -e "${YELLOW}Invalid choice. Defaulting to local testing mode.${NC}"
+      DEPLOY_LOCAL=true
+      ;;
+  esac
+  
+  echo ""
   if command -v docker &> /dev/null; then
     if docker compose ps --quiet 2>/dev/null | grep -q .; then
       echo "[*] Stopping Docker containers from previous setup..."
@@ -472,8 +579,15 @@ setup_nodejs() {
         apt-get install -y nodejs npm
         NODE_PATH=$(which node 2>/dev/null) || true
         if [ -z "$NODE_PATH" ]; then
-          echo -e "${RED}Error: Node.js installation failed.${NC}"
-          exit 1
+          # Debian sometimes installs /usr/bin/nodejs instead of /usr/bin/node
+          if [ -x /usr/bin/nodejs ]; then
+            echo "[*] Creating symlink /usr/bin/node -> /usr/bin/nodejs"
+            ln -sf /usr/bin/nodejs /usr/bin/node
+            NODE_PATH=/usr/bin/node
+          else
+            echo -e "${RED}Error: Node.js installation failed.${NC}"
+            exit 1
+          fi
         fi
         echo -e "${GREEN}[+] Node.js installed successfully!${NC}"
         ;;
@@ -502,7 +616,6 @@ setup_nodejs() {
   echo "Node executable: $NODE_PATH"
   echo ""
 
-  # Generate the service file
   echo "[DEBUG] Generating service file at $SERVICE_FILE"
   cat > "$SERVICE_FILE" << EOF
 # ReverseQR systemd service file
@@ -562,12 +675,20 @@ EOF
   # Install npm dependencies
   echo "[*] Installing npm dependencies..."
   cd "$SCRIPT_DIR"
-  sudo -u "$CURRENT_USER" npm install --omit=dev
-  if [ $? -ne 0 ]; then
-    echo -e "${RED}Error: Failed to install npm dependencies.${NC}"
+  if ! sudo -u "$CURRENT_USER" npm install --omit=dev; then
+    echo -e "${RED}[ERROR] Failed to install npm dependencies.${NC}" >&2
+    echo "Troubleshooting tips:" >&2
+    echo "  - Check npm logs: cat ~/.npm/_logs/*.log" >&2
+    echo "  - Try clearing cache: npm cache clean --force" >&2
+    echo "  - Ensure disk space: df -h" >&2
     exit 1
   fi
   echo -e "${GREEN}[+] Dependencies installed successfully!${NC}"
+  
+  # Verify node_modules ownership
+  if [ -d "$SCRIPT_DIR/node_modules" ]; then
+    chown -R "$CURRENT_USER:$CURRENT_USER" "$SCRIPT_DIR/node_modules"
+  fi
   echo ""
 
   # Install the service file
@@ -590,22 +711,40 @@ EOF
   echo -e "${GREEN}=== Node.js Service Installed ===${NC}"
   echo ""
   
-  # Ask about HTTPS setup
-  echo "The server is now running on port 3000 (HTTP)."
-  echo ""
-  read -p "Would you like to set up HTTPS with nginx and Let's Encrypt? [Y/n]: " SETUP_HTTPS
-  
-  if [[ ! "$SETUP_HTTPS" =~ ^[Nn]$ ]]; then
-    setup_nodejs_https
+  if [ "$DEPLOY_LOCAL" = true ]; then
+    echo "✓ Local testing setup complete!"
+    echo ""
+    echo "You can access ReverseQR at:"
+    echo -e "  ${GREEN}http://localhost:3000${NC}"
+    echo ""
+    echo "Service management commands:"
+    echo "  sudo systemctl status ${SERVICE_NAME}       # Check status"
+    echo "  sudo systemctl restart ${SERVICE_NAME}      # Restart service"
+    echo "  sudo journalctl -u ${SERVICE_NAME} -f       # View live logs"
+    echo ""
+    echo -e "${YELLOW}Note: This is HTTP only, suitable for local testing.${NC}"
+    echo "To add HTTPS and nginx later, run this script again."
+    echo ""
   else
+    # Production setup - ask about HTTPS
+    echo "✓ Node.js service installed!"
     echo ""
-    echo "You can access ReverseQR at: http://localhost:3000"
+    echo "The server is running on port 3000 (internal, behind nginx)."
     echo ""
-    echo -e "${YELLOW}Note: HTTPS is required for WebRTC file transfers to work over the internet.${NC}"
-    echo "Run this script again to set up HTTPS later."
+    read -p "Would you like to set up HTTPS with nginx and Let's Encrypt now? [Y/n]: " SETUP_HTTPS
+    
+    if [[ ! "$SETUP_HTTPS" =~ ^[Nn]$ ]]; then
+      setup_nodejs_https
+    else
+      echo ""
+      echo "You can access ReverseQR at: http://localhost:3000"
+      echo ""
+      echo -e "${YELLOW}Note: HTTPS is required for file transfers to work over the internet.${NC}"
+      echo "Run this script again to set up HTTPS later."
+      echo ""
+    fi
   fi
   
-  echo ""
   echo "Service management commands:"
   echo "  sudo systemctl status ${SERVICE_NAME}       # Check status"
   echo "  sudo systemctl start ${SERVICE_NAME}        # Start service"
@@ -704,6 +843,14 @@ EOF
   # Restart nginx
   systemctl restart nginx
   systemctl enable nginx
+  
+  # Wait for nginx to be ready
+  echo "[*] Waiting for nginx to start..."
+  if ! wait_for_port 80 30; then
+    echo -e "${RED}[ERROR] nginx failed to start on port 80${NC}" >&2
+    systemctl status nginx >&2
+    return 1
+  fi
   
   echo ""
   echo "[*] Obtaining SSL certificate from Let's Encrypt..."
