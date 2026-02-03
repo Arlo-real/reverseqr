@@ -1091,5 +1091,3 @@ async function decryptText(ciphertext, iv, key) {
     return '[Unable to decrypt]';
   }
 }
-
-}
