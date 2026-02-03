@@ -304,8 +304,8 @@ let connectionCode = null;
           // Decrypt the text message - must have ciphertext
           let decrypted = '';
           
-          if (msg.ciphertext && msg.iv && encryptionKey) {
-            decrypted = await decryptText(msg.ciphertext, msg.iv, encryptionKey);
+          if (msg.ciphertext && msg.iv && msg.authTag && encryptionKey) {
+            decrypted = await decryptText(msg.ciphertext, msg.iv, msg.authTag, encryptionKey);
           } else if (msg.text) {
             // Fallback to plain text if no encryption
             decrypted = msg.text;
@@ -323,8 +323,8 @@ let connectionCode = null;
             filesHtml = await Promise.all(msg.files.map(async (f) => {
               let displayName = f.originalName;
               // Decrypt the file name if encrypted
-              if (f.encryptedName && f.nameIv && encryptionKey) {
-                displayName = await decryptText(f.encryptedName, f.nameIv, encryptionKey);
+              if (f.encryptedName && f.nameIv && f.nameAuthTag && encryptionKey) {
+                displayName = await decryptText(f.encryptedName, f.nameIv, f.nameAuthTag, encryptionKey);
               }
               return `
                 <div class="file-item-container">
@@ -363,28 +363,26 @@ let connectionCode = null;
       }
     }
 
-    async function decryptText(ciphertext, iv, encryptionKey) {
+    async function decryptText(ciphertext, iv, authTag, encryptionKey) {
       try {
         if (!ciphertext || !iv) return '[No message content]';
         
         const ciphertextBuffer = hexToArray(ciphertext);
         const ivBuffer = hexToArray(iv);
+        const authTagBuffer = hexToArray(authTag);
         
-        const key = await crypto.subtle.importKey(
-          'raw',
-          encryptionKey,
-          { name: 'AES-GCM' },
-          false,
-          ['decrypt']
-        );
+        // Combine ciphertext and auth tag for AES-GCM decryption
+        const combined = new Uint8Array(ciphertextBuffer.length + authTagBuffer.length);
+        combined.set(ciphertextBuffer, 0);
+        combined.set(authTagBuffer, ciphertextBuffer.length);
         
         const decrypted = await crypto.subtle.decrypt(
           {
             name: 'AES-GCM',
             iv: ivBuffer
           },
-          key,
-          ciphertextBuffer
+          encryptionKey,
+          combined
         );
         
         const decoder = new TextDecoder();
@@ -793,14 +791,16 @@ let connectionCode = null;
       const fileHashes = [];
       const fileNames = [];
       const fileNameIvs = [];
+      const fileNameAuthTags = [];
 
       for (const file of files) {
         formData.append('files', file);
 
         // Encrypt file name
-        const { ciphertext: encryptedName, iv: nameIv } = await encryptText(file.name);
+        const { ciphertext: encryptedName, iv: nameIv, authTag: nameAuthTag } = await encryptText(file.name);
         fileNames.push(encryptedName);
         fileNameIvs.push(nameIv);
+        fileNameAuthTags.push(nameAuthTag);
 
         // Generate IV and hash for file data
         const iv = crypto.getRandomValues(new Uint8Array(12)).toString();
@@ -813,6 +813,7 @@ let connectionCode = null;
       fileHashes.forEach(hash => formData.append('fileHashes[]', hash));
       fileNames.forEach(name => formData.append('fileNames[]', name));
       fileNameIvs.forEach(iv => formData.append('fileNameIvs[]', iv));
+      fileNameAuthTags.forEach(tag => formData.append('fileNameAuthTags[]', tag));
 
       const response = await fetch('/api/message/send', {
         method: 'POST',

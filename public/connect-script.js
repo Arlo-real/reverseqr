@@ -1036,8 +1036,8 @@ async function displayReceivedMessages(messages) {
     
     if (msg.type === 'text') {
       let decrypted = '';
-      if (msg.ciphertext && msg.iv && encryptionKey) {
-        decrypted = await decryptText(msg.ciphertext, msg.iv, encryptionKey);
+      if (msg.ciphertext && msg.iv && msg.authTag && encryptionKey) {
+        decrypted = await decryptText(msg.ciphertext, msg.iv, msg.authTag, encryptionKey);
       } else if (msg.text) {
         decrypted = msg.text;
       } else {
@@ -1053,8 +1053,8 @@ async function displayReceivedMessages(messages) {
       if (msg.files && msg.files.length > 0) {
         filesHtml = await Promise.all(msg.files.map(async (f) => {
           let displayName = f.originalName || f.filename;
-          if (f.encryptedName && f.nameIv && encryptionKey) {
-            displayName = await decryptText(f.encryptedName, f.nameIv, encryptionKey);
+          if (f.encryptedName && f.nameIv && f.nameAuthTag && encryptionKey) {
+            displayName = await decryptText(f.encryptedName, f.nameIv, f.nameAuthTag, encryptionKey);
           }
           return `
             <div class="sent-file">
@@ -1076,13 +1076,19 @@ async function displayReceivedMessages(messages) {
   }
 }
 
-async function decryptText(ciphertext, iv, key) {
+async function decryptText(ciphertext, iv, authTag, key) {
   try {
     const ciphertextBytes = new Uint8Array(ciphertext.match(/.{1,2}/g).map(b => parseInt(b, 16)));
     const ivBytes = new Uint8Array(iv.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+    const authTagBytes = new Uint8Array(authTag.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+    
+    // Combine ciphertext and auth tag for AES-GCM decryption
+    const combined = new Uint8Array(ciphertextBytes.length + authTagBytes.length);
+    combined.set(ciphertextBytes, 0);
+    combined.set(authTagBytes, ciphertextBytes.length);
     
     const algorithm = { name: 'AES-GCM', iv: ivBytes };
-    const decryptedBuffer = await crypto.subtle.decrypt(algorithm, key, ciphertextBytes);
+    const decryptedBuffer = await crypto.subtle.decrypt(algorithm, key, combined);
     
     const decoder = new TextDecoder();
     return decoder.decode(decryptedBuffer);
