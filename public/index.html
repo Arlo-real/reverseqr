@@ -36,9 +36,38 @@
       <div class="spinner"></div>
     </div>
 
-    <div id="messagesSection" class="messages-section" style="display: none;">
-      <div class="messages-title">Received Messages</div>
-      <div id="messagesList"></div>
+    <div id="messageSection" class="message-section" style="display: none;">
+      <div class="section-title">
+        <span id="maxSizeInfo">
+        </span>
+      </div>
+
+      <div>
+        <label class="section-title">Text Message</label>
+        <textarea id="textInput" class="text-input" placeholder="Enter your message (or skip if you only want to upload files)"></textarea>
+      </div>
+
+      <div>
+        <label class="section-title">Upload Files </label>
+        <div class="file-upload" id="fileUploadArea">
+          <input type="file" id="fileInput" multiple />
+          <label class="file-upload-label">
+            Click to browse or drag & drop files here
+          </label>
+        </div>
+        <div id="filesList" class="files-list"></div>
+      </div>
+
+      <button class="btn send-button" id="sendBtn">
+        Send Securely
+      </button>
+    </br>
+    </br>
+    </br>
+      <div id="messagesSection" class="messages-section">
+        <div class="messages-title">Received Messages</div>
+        <div id="messagesList"></div>
+      </div>
     </div>
 
   </div>

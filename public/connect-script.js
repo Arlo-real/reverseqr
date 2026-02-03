@@ -378,20 +378,25 @@ function setupWebSocket() {
       console.log('WebSocket message:', data);
       
       if (data.type === 'receiver-key-available' && data.initiatorPublicKey) {
-        // Receiver's public key is now available
-        if (dhKeyPairPending && receiverKeyResolver) {
+        // Main's public key is now available
+        if (dhKeyPairPending && mainKeyResolver) {
           await completeKeyExchange(dhKeyPairPending, data.initiatorPublicKey);
-          receiverKeyResolver();
-          receiverKeyResolver = null;
+          mainKeyResolver();
+          mainKeyResolver = null;
           dhKeyPairPending = null;
         }
       } else if (data.type === 'keys-available' && data.initiatorPublicKey) {
         // Keys were already available when we subscribed
-        if (dhKeyPairPending && receiverKeyResolver) {
+        if (dhKeyPairPending && mainKeyResolver) {
           await completeKeyExchange(dhKeyPairPending, data.initiatorPublicKey);
-          receiverKeyResolver();
-          receiverKeyResolver = null;
+          mainKeyResolver();
+          mainKeyResolver = null;
           dhKeyPairPending = null;
+        }
+      } else if (data.type === 'message-available') {
+        // New message available from main, fetch and display it
+        if (encryptionKey) {
+          await fetchAndDisplayReceivedMessages();
         }
       }
     } catch (error) {
@@ -971,4 +976,120 @@ function showSuccess(message) {
   setTimeout(() => {
     successDiv.style.display = 'none';
   }, 5000);
+}
+// Track displayed received messages to avoid duplicates
+const displayedReceivedMessageIds = new Set();
+
+async function fetchAndDisplayReceivedMessages() {
+  if (!encryptionKey || !connectionCode) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/message/retrieve/${connectionCode}`);
+    
+    if (response.status === 429) {
+      await showRateLimitError();
+      return;
+    }
+    
+    const data = await response.json();
+    
+    if (data.messages && data.messages.length > 0) {
+      // Filter out already displayed messages
+      const newMessages = data.messages.filter(msg => {
+        const msgId = msg.timestamp;
+        return msgId && !displayedReceivedMessageIds.has(msgId);
+      });
+      
+      if (newMessages.length > 0) {
+        // Track these message IDs as displayed
+        newMessages.forEach(msg => {
+          if (msg.timestamp) displayedReceivedMessageIds.add(msg.timestamp);
+        });
+        
+        displayReceivedMessages(newMessages);
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching received messages:', error);
+  }
+}
+
+async function displayReceivedMessages(messages) {
+  const messagesList = document.getElementById('messagesList');
+  
+  // Create or update received messages section
+  let receivedSection = document.getElementById('receivedMessagesSection');
+  if (!receivedSection) {
+    const titleDiv = document.createElement('div');
+    titleDiv.id = 'receivedMessagesSection';
+    titleDiv.className = 'received-messages-title';
+    titleDiv.textContent = 'Received Messages from Main';
+    messagesList.appendChild(titleDiv);
+    receivedSection = titleDiv;
+  }
+  
+  for (const msg of messages) {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'received-message';
+    
+    if (msg.type === 'text') {
+      let decrypted = '';
+      if (msg.ciphertext && msg.iv && encryptionKey) {
+        decrypted = await decryptText(msg.ciphertext, msg.iv, encryptionKey);
+      } else if (msg.text) {
+        decrypted = msg.text;
+      } else {
+        decrypted = '[Unable to decrypt message]';
+      }
+      
+      msgDiv.innerHTML = `
+        <div class="message-type">Text from Main</div>
+        <div class="message-content">${escapeHtml(decrypted).replace(/\n/g, '<br>')}</div>
+      `;
+    } else if (msg.type === 'files') {
+      let filesHtml = '';
+      if (msg.files && msg.files.length > 0) {
+        filesHtml = await Promise.all(msg.files.map(async (f) => {
+          let displayName = f.originalName || f.filename;
+          if (f.encryptedName && f.nameIv && encryptionKey) {
+            displayName = await decryptText(f.encryptedName, f.nameIv, encryptionKey);
+          }
+          return `
+            <div class="sent-file">
+              <div>${escapeHtml(displayName)} <span class="file-size">(${formatFileSize(f.size)})</span></div>
+            </div>
+          `;
+        })).then(results => results.join(''));
+      }
+      
+      msgDiv.innerHTML = `
+        <div class="message-type">Files from Main</div>
+        <div class="sent-files">
+          ${filesHtml || '<p style="color: #999;">No files</p>'}
+        </div>
+      `;
+    }
+    
+    messagesList.appendChild(msgDiv);
+  }
+}
+
+async function decryptText(ciphertext, iv, key) {
+  try {
+    const ciphertextBytes = new Uint8Array(ciphertext.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+    const ivBytes = new Uint8Array(iv.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+    
+    const algorithm = { name: 'AES-GCM', iv: ivBytes };
+    const decryptedBuffer = await crypto.subtle.decrypt(algorithm, key, ciphertextBytes);
+    
+    const decoder = new TextDecoder();
+    return decoder.decode(decryptedBuffer);
+  } catch (error) {
+    console.error('Decryption error:', error);
+    return '[Unable to decrypt]';
+  }
+}
+
 }

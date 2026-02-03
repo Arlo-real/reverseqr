@@ -105,6 +105,18 @@ let connectionCode = null;
         if (qrSection) {
           qrSection.style.display = 'none';
         }
+        // Show the message section for sending
+        const messageSection = document.getElementById('messageSection');
+        if (messageSection) {
+          messageSection.style.display = 'block';
+          // Update max file size info
+          const maxSizeInfo = document.getElementById('maxSizeInfo');
+          if (maxSizeInfo) {
+            fetchMaxFileSize().then(maxSize => {
+              maxSizeInfo.textContent = `Max file size: ${formatBytes(maxSize)}`;
+            });
+          }
+        }
       } catch (hashError) {
         console.error('Error displaying key hash:', hashError);
       }
@@ -602,6 +614,18 @@ let connectionCode = null;
       }
     });
 
+    // Fetch server config for max file size
+    async function fetchMaxFileSize() {
+      try {
+        const response = await fetch('/api/config');
+        const config = await response.json();
+        return config.maxFileSize || 104857600; // 100MB default
+      } catch (error) {
+        console.error('Error fetching config:', error);
+        return 104857600; // 100MB default
+      }
+    }
+
     // Initialize on page load
     window.addEventListener('DOMContentLoaded', () => {
       initializeMain();
@@ -611,10 +635,231 @@ let connectionCode = null;
       if (copyCodeBtn) {
         copyCodeBtn.addEventListener('click', copyCode);
       }
-    });
 
-    async function hashBuffer(buffer) {
-      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      // Set up send functionality when message section appears
+      setupSendFunctionality();
+    }
+
+    // ============ SEND FUNCTIONALITY ============
+
+    let selectedFiles = [];
+
+    function setupSendFunctionality() {
+      const fileUploadArea = document.getElementById('fileUploadArea');
+      const fileInput = document.getElementById('fileInput');
+      const sendBtn = document.getElementById('sendBtn');
+
+      if (fileUploadArea && fileInput) {
+        // Drag and drop
+        fileUploadArea.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          fileUploadArea.style.backgroundColor = '#e8f5e9';
+        });
+
+        fileUploadArea.addEventListener('dragleave', () => {
+          fileUploadArea.style.backgroundColor = '';
+        });
+
+        fileUploadArea.addEventListener('drop', (e) => {
+          e.preventDefault();
+          fileUploadArea.style.backgroundColor = '';
+          handleFileSelection(e.dataTransfer.files);
+        });
+
+        // Click to select files
+        fileUploadArea.addEventListener('click', () => {
+          fileInput.click();
+        });
+
+        fileInput.addEventListener('change', () => {
+          handleFileSelection(fileInput.files);
+        });
+      }
+
+      if (sendBtn) {
+        sendBtn.addEventListener('click', sendMessage);
+      }
+    }
+
+    function handleFileSelection(files) {
+      selectedFiles = Array.from(files);
+      updateFilesList();
+    }
+
+    function updateFilesList() {
+      const filesList = document.getElementById('filesList');
+      if (!filesList) return;
+
+      filesList.innerHTML = '';
+      selectedFiles.forEach((file, index) => {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-item';
+        fileItem.innerHTML = `
+          <span>${file.name} (${formatBytes(file.size)})</span>
+          <button type="button" class="remove-file-btn" data-index="${index}">✕</button>
+        `;
+        filesList.appendChild(fileItem);
+
+        const removeBtn = fileItem.querySelector('.remove-file-btn');
+        if (removeBtn) {
+          removeBtn.addEventListener('click', () => {
+            selectedFiles.splice(index, 1);
+            updateFilesList();
+          });
+        }
+      });
+    }
+
+    async function sendMessage() {
+      if (!encryptionKey) {
+        showError('Not yet connected. Encryption key not established.');
+        return;
+      }
+
+      if (!connectionCode) {
+        showError('No active connection');
+        return;
+      }
+
+      const textInput = document.getElementById('textInput');
+      const text = textInput ? textInput.value.trim() : '';
+
+      if (!text && selectedFiles.length === 0) {
+        showError('Please enter a message or select files to send');
+        return;
+      }
+
+      try {
+        // If only text message
+        if (selectedFiles.length === 0) {
+          await sendTextMessage(text);
+        } else {
+          // Send files
+          await sendFiles(selectedFiles, text);
+        }
+
+        // Clear form
+        if (textInput) textInput.value = '';
+        selectedFiles = [];
+        updateFilesList();
+        showSuccess('Message sent securely!');
+      } catch (error) {
+        console.error('Error sending message:', error);
+        showError(`Failed to send: ${error.message}`);
+      }
+    }
+
+    async function sendTextMessage(text) {
+      const { ciphertext, iv, authTag, hash } = await encryptText(text);
+
+      const response = await fetch('/api/message/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: connectionCode,
+          messageType: 'text',
+          ciphertext,
+          iv,
+          authTag,
+          hash,
+          text
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send message');
+      }
+    }
+
+    async function sendFiles(files, text) {
+      const formData = new FormData();
+      formData.append('code', connectionCode);
+      formData.append('messageType', 'files');
+      formData.append('text', text || '');
+
+      const fileIvs = [];
+      const fileHashes = [];
+      const fileNames = [];
+      const fileNameIvs = [];
+
+      for (const file of files) {
+        formData.append('files', file);
+
+        // Encrypt file name
+        const { ciphertext: encryptedName, iv: nameIv } = await encryptText(file.name);
+        fileNames.push(encryptedName);
+        fileNameIvs.push(nameIv);
+
+        // Generate IV and hash for file data
+        const iv = crypto.getRandomValues(new Uint8Array(12)).toString();
+        const hash = crypto.getRandomValues(new Uint8Array(16)).toString();
+        fileIvs.push(iv);
+        fileHashes.push(hash);
+      }
+
+      fileIvs.forEach(iv => formData.append('fileIvs[]', iv));
+      fileHashes.forEach(hash => formData.append('fileHashes[]', hash));
+      fileNames.forEach(name => formData.append('fileNames[]', name));
+      fileNameIvs.forEach(iv => formData.append('fileNameIvs[]', iv));
+
+      const response = await fetch('/api/message/send', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send files');
+      }
+    }
+
+    async function encryptText(text) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(text);
+      
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const algorithm = { name: 'AES-GCM', iv };
+      
+      const encryptedBuffer = await crypto.subtle.encrypt(algorithm, encryptionKey, data);
+      const encryptedArray = new Uint8Array(encryptedBuffer);
+      
+      // Split authentication tag
+      const ciphertext = encryptedArray.slice(0, encryptedArray.length - 16);
+      const authTag = encryptedArray.slice(encryptedArray.length - 16);
+      
+      // Hash the plaintext
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      
+      return {
+        ciphertext: Array.from(ciphertext).map(b => b.toString(16).padStart(2, '0')).join(''),
+        iv: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join(''),
+        authTag: Array.from(authTag).map(b => b.toString(16).padStart(2, '0')).join(''),
+        hash: Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
+      };
+    }
+
+    function showError(message) {
+      const errorDiv = document.getElementById('error');
+      if (errorDiv) {
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+      }
+    }
+
+    function showSuccess(message) {
+      const successDiv = document.createElement('div');
+      successDiv.className = 'success';
+      successDiv.textContent = message;
+      successDiv.style.display = 'block';
+      document.body.insertBefore(successDiv, document.body.firstChild);
+      setTimeout(() => successDiv.remove(), 3000);
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
     }
