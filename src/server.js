@@ -500,12 +500,14 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
     let fileHashes = [];
     let fileNames = [];
     let fileNameIvs = [];
+    let fileNameAuthTags = [];
     
     // Try both forms: 'fileIvs[]' and 'fileIvs' (form-data strips the brackets)
     const ivKey = req.body['fileIvs[]'] !== undefined ? 'fileIvs[]' : 'fileIvs';
     const hashKey = req.body['fileHashes[]'] !== undefined ? 'fileHashes[]' : 'fileHashes';
     const nameKey = req.body['fileNames[]'] !== undefined ? 'fileNames[]' : 'fileNames';
     const nameIvKey = req.body['fileNameIvs[]'] !== undefined ? 'fileNameIvs[]' : 'fileNameIvs';
+    const nameAuthTagKey = req.body['fileNameAuthTags[]'] !== undefined ? 'fileNameAuthTags[]' : 'fileNameAuthTags';
     
     if (req.body[ivKey]) {
       fileIvs = Array.isArray(req.body[ivKey]) 
@@ -529,6 +531,12 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
       fileNameIvs = Array.isArray(req.body[nameIvKey]) 
         ? req.body[nameIvKey] 
         : [req.body[nameIvKey]];
+    }
+
+    if (req.body[nameAuthTagKey]) {
+      fileNameAuthTags = Array.isArray(req.body[nameAuthTagKey]) 
+        ? req.body[nameAuthTagKey] 
+        : [req.body[nameAuthTagKey]];
     }
 
     if (!code) {
@@ -574,6 +582,7 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
         const hash = fileHashes[i] || '';
         const encryptedName = fileNames[i] || '';
         const nameIv = fileNameIvs[i] || '';
+        const nameAuthTag = fileNameAuthTags[i] || '';
 
         // Track the file for cleanup
         uploadedFiles.set(filename, Date.now());
@@ -584,7 +593,8 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
           iv: iv,
           hash: hash,
           encryptedName: encryptedName,
-          nameIv: nameIv
+          nameIv: nameIv,
+          nameAuthTag: nameAuthTag
         });
       }
 
