@@ -32,12 +32,12 @@ class ConnectionManager {
   createConnection(options = {}) {
     const code = this.generateConnectionCode();
     // Generate secure tokens for WebSocket authentication
-    const receiverToken = crypto.randomBytes(16).toString('hex');
+    const mainToken = crypto.randomBytes(16).toString('hex');
     this.connections.set(code, {
-      mode: options.mode || 'receiver', // 'receiver' or 'connector'
+      mode: options.mode || 'main', // 'main' or 'connector'
       initiatorDhPublicKey: options.initiatorDhPublicKey || null,
       responderDhPublicKey: null,
-      receiverToken,  // Token for receiver WebSocket auth
+      mainToken,  // Token for main WebSocket auth
       senderToken: null,  // Token for connector WebSocket auth (set on join)
       messages: [],
       createdAt: Date.now(),
@@ -90,7 +90,7 @@ class ConnectionManager {
   /**
    * Validate WebSocket authentication token
    * @param {string} code - Connection code
-   * @param {string} role - 'receiver' or 'connector'
+   * @param {string} role - 'main' or 'connector'
    * @param {string} token - Authentication token
    * @returns {boolean} Whether the token is valid
    */
@@ -98,8 +98,8 @@ class ConnectionManager {
     const conn = this.getConnection(code);
     if (!conn || !token) return false;
     
-    if (role === 'receiver') {
-      return conn.receiverToken === token;
+    if (role === 'main') {
+      return conn.mainToken === token;
     } else if (role === 'sender') {
       return conn.senderToken === token;
     }

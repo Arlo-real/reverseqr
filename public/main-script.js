@@ -22,12 +22,12 @@ let connectionCode = null;
       
       ws.onopen = () => {
         console.log('WebSocket connected');
-        // Subscribe to session as receiver with auth token
+        // Subscribe to session as main with auth token
         if (connectionCode && wsToken) {
           ws.send(JSON.stringify({
             type: 'subscribe',
             code: connectionCode,
-            role: 'receiver',
+            role: 'main',
             token: wsToken
           }));
           
@@ -76,7 +76,7 @@ let connectionCode = null;
         return;
       }
       
-      console.log('Receiver: Got connector public key via WebSocket, computing shared secret');
+      console.log('Main: Got connector public key via WebSocket, computing shared secret');
       
       // Import connector's public key and compute shared secret
       const senderPublicKey = await importPublicKey(senderPublicKeyHex);
@@ -84,7 +84,7 @@ let connectionCode = null;
       
       // Derive encryption key from shared secret using HKDF
       encryptionKey = await deriveKeyFromSharedSecret(sharedSecret);
-      console.log('Receiver: Encryption key established via DH');
+      console.log('Main: Encryption key established via DH');
       
       // Display the security fingerprint and hide loading status
       try {
@@ -191,12 +191,12 @@ let connectionCode = null;
       return new Uint8Array(sharedBits);
     }
 
-    async function initializeReceiver() {
+    async function initializeMain() {
       try {
         // Generate our DH key pair in the browser
         dhKeyPair = await generateDHKeyPair();
         const ourPublicKeyHex = await exportPublicKey(dhKeyPair.publicKey);
-        console.log('Receiver: Generated DH key pair');
+        console.log('Main: Generated DH key pair');
 
         // Create session and send our public key to server
         const response = await fetch('/api/session/create', {
@@ -604,7 +604,7 @@ let connectionCode = null;
 
     // Initialize on page load
     window.addEventListener('DOMContentLoaded', () => {
-      initializeReceiver();
+      initializeMain();
       
       // Set up copy code button event listener
       const copyCodeBtn = document.getElementById('copyCodeBtn');

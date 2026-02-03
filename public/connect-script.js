@@ -11,11 +11,11 @@ let selectedFiles = []; // Will store: {name, size, file}
 let sentMessages = []; // Store sent messages for history
 let connectionCode = null;
 let encryptionKey = null;
-let connectedReceiver = false;
+let connectedMain = false;
 let ws = null;  // WebSocket connection
 let wsToken = null;  // WebSocket authentication token
-let dhKeyPairPending = null;  // Store DH key pair while waiting for receiver's key
-let receiverKeyResolver = null;  // Resolver for waiting on receiver's key
+let dhKeyPairPending = null;  // Store DH key pair while waiting for main's key
+let mainKeyResolver = null;  // Resolver for waiting on main's key
 let maxFileSize = 5 * 1024 * 1024 * 1024; // Default 5GB, will be updated from server
 
 // Fetch and display max file size on page load
@@ -152,7 +152,7 @@ if (scannedCode) {
   document.getElementById('codeInput').value = scannedCode;
   // Automatically connect when code is provided in URL
   setTimeout(() => {
-    connectToReceiver();
+    connectToMain();
   }, 500);
 }
 
@@ -173,7 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Connect on Enter key press
     codeInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {
-        connectToReceiver();
+        connectToMain();
       }
     });
   }
@@ -181,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Connect button
   const connectBtn = document.getElementById('connectBtn');
   if (connectBtn) {
-    connectBtn.addEventListener('click', connectToReceiver);
+    connectBtn.addEventListener('click', connectToMain);
   }
   
   // Send button
@@ -402,7 +402,7 @@ function setupWebSocket() {
   ws.onclose = () => {
     console.log('WebSocket disconnected');
     // Only reconnect if we're still connected to a session
-    if (connectionCode && connectedReceiver) {
+    if (connectionCode && connectedMain) {
       setTimeout(setupWebSocket, 2000);
     }
   };
@@ -412,11 +412,11 @@ function setupWebSocket() {
   };
 }
 
-// Wait for receiver's public key via WebSocket
-async function waitForReceiverPublicKey(code, dhKeyPair) {
+// Wait for main's public key via WebSocket
+async function waitForMainPublicKey(code, dhKeyPair) {
   return new Promise((resolve, reject) => {
     dhKeyPairPending = dhKeyPair;
-    receiverKeyResolver = resolve;
+    mainKeyResolver = resolve;
     
     // Set up WebSocket if not already connected
     if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -433,23 +433,23 @@ async function waitForReceiverPublicKey(code, dhKeyPair) {
 
     // Timeout after 60 seconds
     setTimeout(() => {
-      if (receiverKeyResolver) {
-        receiverKeyResolver = null;
+      if (mainKeyResolver) {
+        mainKeyResolver = null;
         dhKeyPairPending = null;
-        reject(new Error('Timeout waiting for receiver public key'));
+        reject(new Error('Timeout waiting for main public key'));
       }
     }, 60000);
   });
 }
 
 // Complete the key exchange and display security fingerprint
-async function completeKeyExchange(dhKeyPair, receiverPublicKeyHex) {
+async function completeKeyExchange(dhKeyPair, mainPublicKeyHex) {
   try {
-    console.log('completeKeyExchange: Starting with receiver public key hex:', receiverPublicKeyHex ? 'present' : 'missing');
+    console.log('completeKeyExchange: Starting with main public key hex:', mainPublicKeyHex ? 'present' : 'missing');
     
-    // Import receiver's public key and compute shared secret
-    const receiverPublicKey = await importPublicKey(receiverPublicKeyHex);
-    const sharedSecret = await computeSharedSecret(dhKeyPair.privateKey, receiverPublicKey);
+    // Import main's public key and compute shared secret
+    const mainPublicKey = await importPublicKey(mainPublicKeyHex);
+    const sharedSecret = await computeSharedSecret(dhKeyPair.privateKey, mainPublicKey);
     console.log('Connector: Computed shared secret via DH');
 
     // Derive encryption key from shared secret
@@ -476,7 +476,7 @@ async function completeKeyExchange(dhKeyPair, receiverPublicKeyHex) {
 
     const status = document.getElementById('connectionStatus');
     if (status) {
-      status.innerHTML = '<span style="color: #22543d;">Connected to receiver</span>';
+      status.innerHTML = '<span style="color: #22543d;">Connected to main</span>';
       status.classList.add('connected');
     }
   } catch (error) {
@@ -485,7 +485,7 @@ async function completeKeyExchange(dhKeyPair, receiverPublicKeyHex) {
   }
 }
 
-async function connectToReceiver() {
+async function connectToMain() {
   const connectBtn = document.getElementById('connectBtn');
   
   try {
@@ -539,7 +539,7 @@ async function connectToReceiver() {
       const error = await response.json();
       // More specific error messages
       if (response.status === 409) {
-        throw new Error('Another connector is already connected. Please ask the receiver to send a new code.');
+        throw new Error('Another connector is already connected. Please ask the main to send a new code.');
       }
       throw new Error(error.error || 'Connection failed');
     }
@@ -548,15 +548,15 @@ async function connectToReceiver() {
     connectionCode = data.code;
     wsToken = data.wsToken;  // Store WebSocket auth token
 
-    // If receiver's public key is not immediately available, wait via WebSocket
-    if (!data.initiatorPublicKey) {
-      status.innerHTML = '<span>Waiting for receiver to join...</span>';
-      console.log('Connector: Waiting for receiver public key');
+    // If main's public key is not immediately available, wait via WebSocket
+    if (!joinResponse.initiatorPublicKey) {
+      status.innerHTML = '<span>Waiting for main to join...</span>';
+      console.log('Connector: Waiting for main public key');
       
-      // Wait for receiver's public key via WebSocket
-      await waitForReceiverPublicKey(connectionCode, dhKeyPair);
+      // Wait for main's public key via WebSocket
+      await waitForMainPublicKey(connectionCode, dhKeyPair);
     } else {
-      // Receiver is already connected, establish key immediately
+      // Main is already connected, establish key immediately
       await completeKeyExchange(dhKeyPair, data.initiatorPublicKey);
     }
 
@@ -565,7 +565,7 @@ async function connectToReceiver() {
       throw new Error('Key exchange failed - encryption key not established');
     }
 
-    connectedReceiver = true;
+    connectedMain = true;
     // Hide the connection section
     document.getElementById('codeInputSection').style.display = 'none';
     // Show the message section
@@ -632,8 +632,8 @@ async function deriveKeyFromSecret(secret) {
 
 async function sendMessage() {
   try {
-    if (!connectedReceiver) {
-      showError('Not connected to receiver');
+    if (!connectedMain) {
+      showError('Not connected to main');
       return;
     }
 

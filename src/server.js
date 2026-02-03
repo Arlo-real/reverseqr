@@ -345,7 +345,7 @@ function checkStorageMiddleware(req, res, next) {
 // ============ ROUTES ============
 
 /**
- * Receiver page - displays QR code with connection code
+ * Main page - displays QR code with connection code
  */
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
@@ -360,8 +360,8 @@ app.get('/connect', (req, res) => {
 
 
 /**
- * API: Create a new receiver session (receiver initiates)
- * Now accepts the receiver's DH public key from the browser
+ * API: Create a new main session (main initiates)
+ * Now accepts the main's DH public key from the browser
  */
 app.post('/api/session/create', sessionLimiter, async (req, res) => {
   try {
@@ -373,9 +373,9 @@ app.post('/api/session/create', sessionLimiter, async (req, res) => {
       initiatorDhPublicKey: initiatorDhPublicKey || null
     });
 
-    // Get the receiver token for WebSocket authentication
+    // Get the main token for WebSocket authentication
     const conn = connManager.getConnection(code);
-    const wsToken = conn.receiverToken;
+    const wsToken = conn.mainToken;
 
     // Log the event
     logEvent(clientIp, 'created session', `(${code})`);
@@ -441,8 +441,8 @@ app.post('/api/session/join', (req, res) => {
     if (responderDhPublicKey) {
       connManager.setResponderPublicKey(code, responderDhPublicKey);
       
-      // Notify receiver via WebSocket that connector's key is available
-      notifySessionRole(code, 'receiver', {
+      // Notify main via WebSocket that connector's key is available
+      notifySessionRole(code, 'main', {
         type: 'sender-key-available',
         responderPublicKey: responderDhPublicKey
       });
@@ -462,7 +462,7 @@ app.post('/api/session/join', (req, res) => {
 });
 
 /**
- * API: Get session status and DH public keys (for receiver to poll for connector's key)
+ * API: Get session status and DH public keys (for main to poll for connector's key)
  */
 app.get('/api/session/status/:code', (req, res) => {
   try {
@@ -616,8 +616,8 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
     const details = messageType === 'files' ? `(${req.files.length} files) size: ${formatBytes(totalSize)}` : `size: ${formatBytes(totalSize)}`;
     logEvent(clientIp, action, details);
     
-    // Notify receiver via WebSocket that a new message is available
-    notifySessionRole(code, 'receiver', {
+    // Notify main via WebSocket that a new message is available
+    notifySessionRole(code, 'main', {
       type: 'message-available',
       messageId: messageData.timestamp,
       messageType: messageData.type
@@ -930,18 +930,18 @@ wss.on('connection', (ws, req) => {
         // Check if there's already data to send
         const session = connManager.getConnection(code);
         
-        // Log receiver reconnections with different IP
-        if (ws.role === 'receiver' && session && session.receiverIp && session.receiverIp !== clientIp) {
-          logEvent(clientIp, 'receiver reconnected', `session ${code} (previous IP: ${session.receiverIp})`);
+        // Log main reconnections with different IP
+        if (ws.role === 'main' && session && session.mainIp && session.mainIp !== clientIp) {
+          logEvent(clientIp, 'main reconnected', `session ${code} (previous IP: ${session.mainIp})`);
         }
         
-        // Track receiver IP for reconnection detection
-        if (ws.role === 'receiver' && session) {
-          session.receiverIp = clientIp;
+        // Track main IP for reconnection detection
+        if (ws.role === 'main' && session) {
+          session.mainIp = clientIp;
         }
         if (session) {
-          // If receiver subscribes and connector's key is available, notify immediately
-          if (ws.role === 'receiver' && session.responderDhPublicKey) {
+          // If main subscribes and connector's key is available, notify immediately
+          if (ws.role === 'main' && session.responderDhPublicKey) {
             ws.send(JSON.stringify({
               type: 'sender-key-available',
               responderPublicKey: session.responderDhPublicKey
@@ -956,11 +956,11 @@ wss.on('connection', (ws, req) => {
           }
         }
 
-        // If receiver subscribes, check for any queued messages
-        if (ws.role === 'receiver') {
+        // If main subscribes, check for any queued messages
+        if (ws.role === 'main') {
           const messages = connManager.getMessages(code);
           if (messages && messages.length > 0) {
-            // Notify receiver that messages are available
+            // Notify main that messages are available
             ws.send(JSON.stringify({
               type: 'message-available',
               messageCount: messages.length

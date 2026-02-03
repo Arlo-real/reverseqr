@@ -19,7 +19,7 @@ Now, I can simply open up this website and scan the QR code to transfer anything
 - All data deleted shortly after upload (30 min by default)
 
 ### Easy use: two ways of transmitting the connection code
-- **QR Code**: Receiver displays QR code, connector scans it
+- **QR Code**: Main displays QR code, connector scans it
 - **Human-Readable Codes**: PGP wordlist encoding for easy verbal transmission
 
 ### A simple but powerful tool:
@@ -29,14 +29,14 @@ Now, I can simply open up this website and scan the QR code to transfer anything
 
 
 ## Limitations
-- High RAM usage for the connector and receiver
+- High RAM usage for the connector and main
 - A malicious server admin could replace the normal webpage with one that does not encrypt the data and the user would not be able to notice
 
 
 
 ## How to use?
 
-**For Receiver:**
+**For Main:****
 1. Open http://localhost:3000/
 2. Share the QR code or PGP-encoded connection code with connector
 3. Files/messages appear automatically when sent
@@ -45,7 +45,7 @@ Now, I can simply open up this website and scan the QR code to transfer anything
 1. Scan QR code or open /connect page and enter connection code
 2. Type message and/or upload files
 3. Click "Send Securely"
-4. Receiver gets the messages
+4. Main gets the messages
 
 
 
@@ -92,7 +92,7 @@ npm start
 ```
 
 4. **Access the application:**
-- Receiver: http://localhost:3000 (by default)
+- Main: http://localhost:3000 (by default)
 - Connector: http://localhost:3000/connect (by default)
 
 
@@ -105,7 +105,7 @@ Please follow the instructions in SETUP.md
 ## API Endpoints
 
 ### Session Management
-- `POST /api/session/create` - Create receiver session with strict rate limiting
+- `POST /api/session/create` - Create main session with strict rate limiting
 - `POST /api/session/join` - Join existing session as connector (only one connector per session)
 - `GET /api/session/status/:code` - Get session status and DH public keys
 
@@ -121,7 +121,7 @@ Please follow the instructions in SETUP.md
 - `GET /health` - Server health check
 
 ### Pages
-- `GET /` - Receiver page displaying QR code
+- `GET /` - Main page displaying QR code
 - `GET /connect` - Page to enter connection code
 - `GET /join?code=` - Redirects to connector page and auto-connects
 
