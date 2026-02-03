@@ -88,7 +88,8 @@ let connectionCode = null;
       
       // Display the security fingerprint and hide loading status
       try {
-        const keyHash = await hashBuffer(encryptionKey);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', encryptionKey);
+        const keyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
         const keyWords = await hashToWords(keyHash);
         const keyHashDisplay = document.getElementById('keyHashDisplay');
         if (keyHashDisplay) {
