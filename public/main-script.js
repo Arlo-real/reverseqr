@@ -638,7 +638,7 @@ let connectionCode = null;
 
       // Set up send functionality when message section appears
       setupSendFunctionality();
-    }
+    });
 
     // ============ SEND FUNCTIONALITY ============
 
