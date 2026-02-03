@@ -461,8 +461,8 @@ async function completeKeyExchange(dhKeyPair, mainPublicKeyHex) {
     encryptionKey = await deriveKeyFromSharedSecret(sharedSecret);
     console.log('Connector: Encryption key established via DH');
 
-    // Hash the encryption key and display as 3-word code
-    const keyHash = await hashBuffer(encryptionKey);
+    // Hash the shared secret and display as 3-word code
+    const keyHash = await hashBuffer(sharedSecret);
     console.log('Connector: Key hash computed:', keyHash);
     
     const keyWords = await hashToWords(keyHash);

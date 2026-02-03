@@ -88,7 +88,8 @@ let connectionCode = null;
       
       // Display the security fingerprint and hide loading status
       try {
-        const hashBuffer = await crypto.subtle.digest('SHA-256', encryptionKey);
+        // Hash the shared secret to display as fingerprint
+        const hashBuffer = await crypto.subtle.digest('SHA-256', sharedSecret);
         const keyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
         const keyWords = await hashToWords(keyHash);
         const keyHashDisplay = document.getElementById('keyHashDisplay');
@@ -269,7 +270,16 @@ let connectionCode = null;
         256
       );
       
-      return new Uint8Array(derivedBits);
+      // Import the derived bits as an AES-GCM CryptoKey
+      const key = await crypto.subtle.importKey(
+        'raw',
+        derivedBits,
+        { name: 'AES-GCM' },
+        false,
+        ['encrypt', 'decrypt']
+      );
+      
+      return key;
     }
 
     let displayedMessageIds = new Set();
