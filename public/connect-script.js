@@ -361,7 +361,7 @@ function setupWebSocket() {
   
   ws.onopen = () => {
     console.log('WebSocket connected');
-    // Subscribe to session as sender with auth token
+    // Subscribe to session as connector with auth token
     if (connectionCode && wsToken) {
       ws.send(JSON.stringify({
         type: 'subscribe',
@@ -450,18 +450,18 @@ async function completeKeyExchange(dhKeyPair, receiverPublicKeyHex) {
     // Import receiver's public key and compute shared secret
     const receiverPublicKey = await importPublicKey(receiverPublicKeyHex);
     const sharedSecret = await computeSharedSecret(dhKeyPair.privateKey, receiverPublicKey);
-    console.log('Sender: Computed shared secret via DH');
+    console.log('Connector: Computed shared secret via DH');
 
     // Derive encryption key from shared secret
     encryptionKey = await deriveKeyFromSharedSecret(sharedSecret);
-    console.log('Sender: Encryption key established via DH');
+    console.log('Connector: Encryption key established via DH');
 
     // Hash the encryption key and display as 3-word code
     const keyHash = await hashBuffer(encryptionKey);
-    console.log('Sender: Key hash computed:', keyHash);
+    console.log('Connector: Key hash computed:', keyHash);
     
     const keyWords = await hashToWords(keyHash);
-    console.log('Sender: Key words generated:', keyWords);
+    console.log('Connector: Key words generated:', keyWords);
     
     const keyHashDisplay = document.getElementById('keyHashDisplay');
     console.log('keyHashDisplay element found:', !!keyHashDisplay);
@@ -521,7 +521,7 @@ async function connectToReceiver() {
     // Generate our DH key pair in the browser
     const dhKeyPair = await generateDHKeyPair();
     const ourPublicKeyHex = await exportPublicKey(dhKeyPair.publicKey);
-    console.log('Sender: Generated DH key pair');
+    console.log('Connector: Generated DH key pair');
 
     // Join the session and send our public key
     const response = await fetch('/api/session/join', {
@@ -539,7 +539,7 @@ async function connectToReceiver() {
       const error = await response.json();
       // More specific error messages
       if (response.status === 409) {
-        throw new Error('Another sender is already connected. Please ask the receiver to send a new code.');
+        throw new Error('Another connector is already connected. Please ask the receiver to send a new code.');
       }
       throw new Error(error.error || 'Connection failed');
     }
@@ -551,7 +551,7 @@ async function connectToReceiver() {
     // If receiver's public key is not immediately available, wait via WebSocket
     if (!data.initiatorPublicKey) {
       status.innerHTML = '<span>Waiting for receiver to join...</span>';
-      console.log('Sender: Waiting for receiver public key');
+      console.log('Connector: Waiting for receiver public key');
       
       // Wait for receiver's public key via WebSocket
       await waitForReceiverPublicKey(connectionCode, dhKeyPair);
@@ -582,8 +582,8 @@ async function connectToReceiver() {
     showError('Connection failed: ' + error.message);
     console.error(error);
     
-    // Clear code input if another sender is already connected (code is invalid)
-    if (error.message.includes('Another sender is already connected')) {
+    // Clear code input if another connector is already connected (code is invalid)
+    if (error.message.includes('Another connector is already connected')) {
       const codeInput = document.getElementById('codeInput');
       if (codeInput) {
         codeInput.value = '';

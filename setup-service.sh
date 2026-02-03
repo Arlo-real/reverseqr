@@ -1,7 +1,7 @@
 #!/bin/bash
-
 # ReverseQR Service Setup Script
 # This script lets the user choose between Docker or Node.js server setup
+# AI disclaimer: this script was mainly vibe coded
 
 set -euo pipefail
 
@@ -432,6 +432,12 @@ setup_docker() {
   # Ensure docker/nginx directories exist for compose volumes
   mkdir -p "$SCRIPT_DIR/docker/nginx/conf.d"
   mkdir -p "$SCRIPT_DIR/docker/nginx/ssl"
+  
+  # Remove nginx.conf if it exists as a directory (shouldn't happen, but be safe)
+  if [ -d "$SCRIPT_DIR/docker/nginx/nginx.conf" ]; then
+    echo "[*] Removing directory $SCRIPT_DIR/docker/nginx/nginx.conf..."
+    rm -rf "$SCRIPT_DIR/docker/nginx/nginx.conf"
+  fi
   
   # Create main nginx config if it doesn't exist
   if [ ! -f "$SCRIPT_DIR/docker/nginx/nginx.conf" ]; then

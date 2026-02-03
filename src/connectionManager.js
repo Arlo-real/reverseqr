@@ -34,11 +34,11 @@ class ConnectionManager {
     // Generate secure tokens for WebSocket authentication
     const receiverToken = crypto.randomBytes(16).toString('hex');
     this.connections.set(code, {
-      mode: options.mode || 'receiver', // 'receiver' or 'sender'
+      mode: options.mode || 'receiver', // 'receiver' or 'connector'
       initiatorDhPublicKey: options.initiatorDhPublicKey || null,
       responderDhPublicKey: null,
       receiverToken,  // Token for receiver WebSocket auth
-      senderToken: null,  // Token for sender WebSocket auth (set on join)
+      senderToken: null,  // Token for connector WebSocket auth (set on join)
       messages: [],
       createdAt: Date.now(),
       expiresAt: Date.now() + this.sessionTimeout,
@@ -76,9 +76,9 @@ class ConnectionManager {
   }
 
   /**
-   * Generate and set sender token when sender joins
+   * Generate and set connector token when connector joins
    * @param {string} code - Connection code
-   * @returns {string} The generated sender token
+   * @returns {string} The generated connector token
    */
   generateSenderToken(code) {
     const conn = this.getConnection(code);
@@ -90,7 +90,7 @@ class ConnectionManager {
   /**
    * Validate WebSocket authentication token
    * @param {string} code - Connection code
-   * @param {string} role - 'receiver' or 'sender'
+   * @param {string} role - 'receiver' or 'connector'
    * @param {string} token - Authentication token
    * @returns {boolean} Whether the token is valid
    */

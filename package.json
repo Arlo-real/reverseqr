@@ -1,6 +1,6 @@
 {
   "name": "reverseqr",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Secure file and text sharing via QR codes",
   "main": "src/server.js",
   "scripts": {

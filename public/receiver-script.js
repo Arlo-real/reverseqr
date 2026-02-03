@@ -45,7 +45,7 @@ let connectionCode = null;
           console.log('WebSocket message:', data);
           
           if (data.type === 'sender-key-available' && data.responderPublicKey) {
-            // Sender's public key is now available
+            // Connector's public key is now available
             await handleSenderKeyAvailable(data.responderPublicKey);
           } else if (data.type === 'message-available') {
             // New message available, fetch it
@@ -69,16 +69,16 @@ let connectionCode = null;
       };
     }
 
-    // Handle when sender's public key becomes available
+    // Handle when connector's public key becomes available
     async function handleSenderKeyAvailable(senderPublicKeyHex) {
       if (encryptionKey) {
         // Already have encryption key, ignore duplicate
         return;
       }
       
-      console.log('Receiver: Got sender public key via WebSocket, computing shared secret');
+      console.log('Receiver: Got connector public key via WebSocket, computing shared secret');
       
-      // Import sender's public key and compute shared secret
+      // Import connector's public key and compute shared secret
       const senderPublicKey = await importPublicKey(senderPublicKeyHex);
       const sharedSecret = await computeSharedSecret(dhKeyPair.privateKey, senderPublicKey);
       

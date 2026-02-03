@@ -196,7 +196,7 @@ const connManager = new ConnectionManager({
 const dhInstances = new Map();
 
 // Store WebSocket connections (keyed by connection code)
-// Each session can have multiple websocket clients (receiver + sender)
+// Each session can have multiple websocket clients (receiver + connector)
 const wsConnections = new Map();
 
 // Helper to broadcast to all clients in a session
@@ -352,10 +352,10 @@ app.get('/', (req, res) => {
 });
 
 /**
- * Sender page - scans QR code or inputs connection code
+ * Connect page - scans QR code or inputs connection code
  */
-app.get('/sender', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/sender.html'));
+app.get('/connect', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/connect.html'));
 });
 
 
@@ -402,9 +402,9 @@ app.post('/api/session/create', sessionLimiter, async (req, res) => {
 });
 
 /**
- * API: Join an existing session as sender
- * Now accepts the sender's DH public key from the browser
- * Only one sender allowed per session
+ * API: Join an existing session as connector
+ * Now accepts the connector's DH public key from the browser
+ * Only one connector allowed per session
  */
 app.post('/api/session/join', (req, res) => {
   try {
@@ -423,25 +423,25 @@ app.post('/api/session/join', (req, res) => {
       return res.status(404).json({ error: 'Connection not found' });
     }
 
-    // Check if a sender is already connected
+    // Check if a connector is already connected
     if (conn.senderConnected) {
-      return res.status(409).json({ error: 'A sender is already connected to this session. Only one sender allowed.' });
+      return res.status(409).json({ error: 'A connector is already connected to this session. Only one connector allowed.' });
     }
 
-    // Mark that a sender is now connected
+    // Mark that a connector is now connected
     conn.senderConnected = true;
 
-    // Generate sender token for WebSocket authentication
+    // Generate connector token for WebSocket authentication
     const wsToken = connManager.generateSenderToken(code);
 
     // Log the event
     logEvent(clientIp, 'joined session', `(${code})`);
 
-    // Store sender's DH public key if provided
+    // Store connector's DH public key if provided
     if (responderDhPublicKey) {
       connManager.setResponderPublicKey(code, responderDhPublicKey);
       
-      // Notify receiver via WebSocket that sender's key is available
+      // Notify receiver via WebSocket that connector's key is available
       notifySessionRole(code, 'receiver', {
         type: 'sender-key-available',
         responderPublicKey: responderDhPublicKey
@@ -462,7 +462,7 @@ app.post('/api/session/join', (req, res) => {
 });
 
 /**
- * API: Get session status and DH public keys (for receiver to poll for sender's key)
+ * API: Get session status and DH public keys (for receiver to poll for connector's key)
  */
 app.get('/api/session/status/:code', (req, res) => {
   try {
@@ -732,9 +732,9 @@ app.get('/api/file/download/:filename', (req, res) => {
 app.get('/join', (req, res) => {
   const { code } = req.query;
   if (!code) {
-    return res.redirect('/sender');
+    return res.redirect('/connect');
   }
-  res.redirect(`/sender?code=${code}`);
+  res.redirect(`/connect?code=${code}`);
 });
 
 /**
@@ -866,7 +866,7 @@ function formatBytes(bytes) {
 
 const server = app.listen(PORT, () => {
   console.log(`ReverseQR server running at ${BASE_URL}`);
-  console.log(`Sender: ${BASE_URL}/sender`);
+  console.log(`Connect: ${BASE_URL}/connect`);
   console.log(`\nConfiguration:`);
   console.log(`   • Max file size: ${formatBytes(MAX_FILE_SIZE_BYTES)}`);
   console.log(`   • Body size limit: ${formatBytes(parseSize(BODY_SIZE_LIMIT))}`);
@@ -940,14 +940,14 @@ wss.on('connection', (ws, req) => {
           session.receiverIp = clientIp;
         }
         if (session) {
-          // If receiver subscribes and sender's key is available, notify immediately
+          // If receiver subscribes and connector's key is available, notify immediately
           if (ws.role === 'receiver' && session.responderDhPublicKey) {
             ws.send(JSON.stringify({
               type: 'sender-key-available',
               responderPublicKey: session.responderDhPublicKey
             }));
           }
-          // If sender subscribes and receiver's key is available, notify immediately
+          // If connector subscribes and receiver's key is available, notify immediately
           if (ws.role === 'sender' && session.initiatorDhPublicKey) {
             ws.send(JSON.stringify({
               type: 'receiver-key-available',
@@ -991,7 +991,7 @@ wss.on('connection', (ws, req) => {
         }
       }
       
-      // If a sender disconnects, clear the senderConnected flag
+      // If a connector disconnects, clear the senderConnected flag
       if (ws.role === 'sender') {
         const conn = connManager.getConnection(ws.sessionCode);
         if (conn) {
