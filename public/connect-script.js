@@ -1036,11 +1036,26 @@ async function displayReceivedMessages(messages) {
     
     if (msg.type === 'text') {
       let decrypted = '';
+      
+      console.log('Processing text message (connector):', {
+        hasCiphertext: !!msg.ciphertext,
+        hasIv: !!msg.iv,
+        hasAuthTag: !!msg.authTag,
+        hasEncryptionKey: !!encryptionKey,
+        msgKeys: Object.keys(msg)
+      });
+      
       if (msg.ciphertext && msg.iv && msg.authTag && encryptionKey) {
         decrypted = await decryptText(msg.ciphertext, msg.iv, msg.authTag, encryptionKey);
       } else if (msg.text) {
         decrypted = msg.text;
       } else {
+        console.warn('Cannot decrypt message (connector) - missing fields', {
+          ciphertext: msg.ciphertext ? 'present' : 'MISSING',
+          iv: msg.iv ? 'present' : 'MISSING',
+          authTag: msg.authTag ? 'present' : 'MISSING',
+          encryptionKey: encryptionKey ? 'present' : 'MISSING'
+        });
         decrypted = '[Unable to decrypt message]';
       }
       
@@ -1078,22 +1093,58 @@ async function displayReceivedMessages(messages) {
 
 async function decryptText(ciphertext, iv, authTag, key) {
   try {
+    console.log('=== decryptText DEBUG (connector) ===');
+    console.log('Ciphertext:', ciphertext ? `${ciphertext.substring(0, 50)}... (length: ${ciphertext.length})` : 'MISSING');
+    console.log('IV:', iv ? `${iv.substring(0, 20)}... (length: ${iv.length})` : 'MISSING');
+    console.log('AuthTag:', authTag ? `${authTag.substring(0, 20)}... (length: ${authTag.length})` : 'MISSING');
+    console.log('EncryptionKey:', key ? `CryptoKey (type: ${key.type})` : 'MISSING');
+    
+    if (!ciphertext || !iv || !authTag) {
+      console.warn('Missing required decryption parameters');
+      return '[Unable to decrypt - missing parameters]';
+    }
+    
+    if (!key) {
+      console.warn('Missing encryption key');
+      return '[Unable to decrypt - missing key]';
+    }
+    
     const ciphertextBytes = new Uint8Array(ciphertext.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+    console.log('Ciphertext bytes length:', ciphertextBytes.length);
+    
     const ivBytes = new Uint8Array(iv.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+    console.log('IV bytes length:', ivBytes.length);
+    
     const authTagBytes = new Uint8Array(authTag.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+    console.log('AuthTag bytes length:', authTagBytes.length);
     
     // Combine ciphertext and auth tag for AES-GCM decryption
     const combined = new Uint8Array(ciphertextBytes.length + authTagBytes.length);
     combined.set(ciphertextBytes, 0);
     combined.set(authTagBytes, ciphertextBytes.length);
+    console.log('Combined buffer length:', combined.length);
     
     const algorithm = { name: 'AES-GCM', iv: ivBytes };
+    console.log('Calling crypto.subtle.decrypt with AES-GCM algorithm...');
+    
     const decryptedBuffer = await crypto.subtle.decrypt(algorithm, key, combined);
     
+    console.log('Decryption successful, decoded length:', decryptedBuffer.byteLength);
     const decoder = new TextDecoder();
-    return decoder.decode(decryptedBuffer);
+    const result = decoder.decode(decryptedBuffer);
+    console.log('Decoded text:', result);
+    console.log('=== decryptText SUCCESS (connector) ===');
+    return result;
   } catch (error) {
-    console.error('Decryption error:', error);
+    console.error('=== TEXT DECRYPTION ERROR (connector) ===');
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('Ciphertext provided:', !!ciphertext);
+    console.error('IV provided:', !!iv);
+    console.error('AuthTag provided:', !!authTag);
+    console.error('EncryptionKey provided:', !!key);
+    console.error('=== END ERROR ===');
     return '[Unable to decrypt]';
   }
 }

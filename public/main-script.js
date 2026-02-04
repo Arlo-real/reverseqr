@@ -304,12 +304,26 @@ let connectionCode = null;
           // Decrypt the text message - must have ciphertext
           let decrypted = '';
           
+          console.log('Processing text message:', {
+            hasCiphertext: !!msg.ciphertext,
+            hasIv: !!msg.iv,
+            hasAuthTag: !!msg.authTag,
+            hasEncryptionKey: !!encryptionKey,
+            msgKeys: Object.keys(msg)
+          });
+          
           if (msg.ciphertext && msg.iv && msg.authTag && encryptionKey) {
             decrypted = await decryptText(msg.ciphertext, msg.iv, msg.authTag, encryptionKey);
           } else if (msg.text) {
             // Fallback to plain text if no encryption
             decrypted = msg.text;
           } else {
+            console.warn('Cannot decrypt message - missing fields', {
+              ciphertext: msg.ciphertext ? 'present' : 'MISSING',
+              iv: msg.iv ? 'present' : 'MISSING',
+              authTag: msg.authTag ? 'present' : 'MISSING',
+              encryptionKey: encryptionKey ? 'present' : 'MISSING'
+            });
             decrypted = '[Unable to decrypt message]';
           }
 
@@ -365,17 +379,43 @@ let connectionCode = null;
 
     async function decryptText(ciphertext, iv, authTag, encryptionKey) {
       try {
-        if (!ciphertext || !iv) return '[No message content]';
+        console.log('=== decryptText DEBUG ===');
+        console.log('Ciphertext:', ciphertext ? `${ciphertext.substring(0, 50)}... (length: ${ciphertext.length})` : 'MISSING');
+        console.log('IV:', iv ? `${iv.substring(0, 20)}... (length: ${iv.length})` : 'MISSING');
+        console.log('AuthTag:', authTag ? `${authTag.substring(0, 20)}... (length: ${authTag.length})` : 'MISSING');
+        console.log('EncryptionKey:', encryptionKey ? `CryptoKey (type: ${encryptionKey.type})` : 'MISSING');
+        
+        if (!ciphertext || !iv) {
+          console.warn('Missing ciphertext or IV');
+          return '[No message content]';
+        }
+        
+        if (!authTag) {
+          console.warn('Missing authTag - cannot decrypt AES-GCM');
+          return '[Decryption failed - missing auth tag]';
+        }
+        
+        if (!encryptionKey) {
+          console.warn('Missing encryption key');
+          return '[Decryption failed - missing key]';
+        }
         
         const ciphertextBuffer = hexToArray(ciphertext);
+        console.log('Ciphertext buffer length:', ciphertextBuffer.length);
+        
         const ivBuffer = hexToArray(iv);
+        console.log('IV buffer length:', ivBuffer.length);
+        
         const authTagBuffer = hexToArray(authTag);
+        console.log('AuthTag buffer length:', authTagBuffer.length);
         
         // Combine ciphertext and auth tag for AES-GCM decryption
         const combined = new Uint8Array(ciphertextBuffer.length + authTagBuffer.length);
         combined.set(ciphertextBuffer, 0);
         combined.set(authTagBuffer, ciphertextBuffer.length);
+        console.log('Combined buffer length:', combined.length);
         
+        console.log('Calling crypto.subtle.decrypt with AES-GCM algorithm...');
         const decrypted = await crypto.subtle.decrypt(
           {
             name: 'AES-GCM',
@@ -385,10 +425,22 @@ let connectionCode = null;
           combined
         );
         
+        console.log('Decryption successful, decoded length:', decrypted.byteLength);
         const decoder = new TextDecoder();
-        return decoder.decode(decrypted);
+        const result = decoder.decode(decrypted);
+        console.log('Decoded text:', result);
+        console.log('=== decryptText SUCCESS ===');
+        return result;
       } catch (e) {
-        console.error('Text decryption error:', e);
+        console.error('=== TEXT DECRYPTION ERROR ===');
+        console.error('Error name:', e.name);
+        console.error('Error message:', e.message);
+        console.error('Error stack:', e.stack);
+        console.error('Ciphertext provided:', !!ciphertext);
+        console.error('IV provided:', !!iv);
+        console.error('AuthTag provided:', !!authTag);
+        console.error('EncryptionKey provided:', !!encryptionKey);
+        console.error('=== END ERROR ===');
         return '[Decryption failed]';
       }
     }
