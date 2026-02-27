@@ -491,7 +491,7 @@ app.get('/api/session/status/:code', (req, res) => {
 
 app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.array('files'), (req, res) => {
   try {
-    let { code, messageType, ciphertext, iv, authTag, hash, text } = req.body;
+    let { code, messageType, ciphertext, iv, authTag, hash, text, senderRole } = req.body;
     const clientIp = req.ip;
     
     // Handle file IVs and hashes from FormData
@@ -500,14 +500,12 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
     let fileHashes = [];
     let fileNames = [];
     let fileNameIvs = [];
-    let fileNameAuthTags = [];
     
     // Try both forms: 'fileIvs[]' and 'fileIvs' (form-data strips the brackets)
     const ivKey = req.body['fileIvs[]'] !== undefined ? 'fileIvs[]' : 'fileIvs';
     const hashKey = req.body['fileHashes[]'] !== undefined ? 'fileHashes[]' : 'fileHashes';
     const nameKey = req.body['fileNames[]'] !== undefined ? 'fileNames[]' : 'fileNames';
     const nameIvKey = req.body['fileNameIvs[]'] !== undefined ? 'fileNameIvs[]' : 'fileNameIvs';
-    const nameAuthTagKey = req.body['fileNameAuthTags[]'] !== undefined ? 'fileNameAuthTags[]' : 'fileNameAuthTags';
     
     if (req.body[ivKey]) {
       fileIvs = Array.isArray(req.body[ivKey]) 
@@ -533,12 +531,6 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
         : [req.body[nameIvKey]];
     }
 
-    if (req.body[nameAuthTagKey]) {
-      fileNameAuthTags = Array.isArray(req.body[nameAuthTagKey]) 
-        ? req.body[nameAuthTagKey] 
-        : [req.body[nameAuthTagKey]];
-    }
-
     if (!code) {
       return res.status(400).json({ error: 'Code is required' });
     }
@@ -551,9 +543,14 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
       return res.status(404).json({ error: 'Connection not found' });
     }
 
+    // Determine who is sending this message so we can route notifications.
+    // Default to 'sender' (connector) for backwards compatibility if not provided.
+    const fromRole = senderRole === 'main' ? 'main' : 'sender';
+
     let messageData = {
       type: messageType || 'text',
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      from: fromRole
     };
 
     if (messageType === 'text') {
@@ -582,7 +579,6 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
         const hash = fileHashes[i] || '';
         const encryptedName = fileNames[i] || '';
         const nameIv = fileNameIvs[i] || '';
-        const nameAuthTag = fileNameAuthTags[i] || '';
 
         // Track the file for cleanup
         uploadedFiles.set(filename, Date.now());
@@ -593,8 +589,7 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
           iv: iv,
           hash: hash,
           encryptedName: encryptedName,
-          nameIv: nameIv,
-          nameAuthTag: nameAuthTag
+          nameIv: nameIv
         });
       }
 
@@ -626,11 +621,16 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
     const details = messageType === 'files' ? `(${req.files.length} files) size: ${formatBytes(totalSize)}` : `size: ${formatBytes(totalSize)}`;
     logEvent(clientIp, action, details);
     
-    // Notify main via WebSocket that a new message is available
-    notifySessionRole(code, 'main', {
+    // Determine which role should be notified about this new message.
+    // If main sent it, notify the connector ('sender'); otherwise notify main.
+    const targetRole = fromRole === 'main' ? 'sender' : 'main';
+
+    // Notify the other party via WebSocket that a new message is available
+    notifySessionRole(code, targetRole, {
       type: 'message-available',
       messageId: messageData.timestamp,
-      messageType: messageData.type
+      messageType: messageData.type,
+      from: fromRole
     });
 
     res.json({
@@ -966,15 +966,37 @@ wss.on('connection', (ws, req) => {
           }
         }
 
-        // If main subscribes, check for any queued messages
+        // If main subscribes, check for any queued messages from the connector
         if (ws.role === 'main') {
           const messages = connManager.getMessages(code);
           if (messages && messages.length > 0) {
-            // Notify main that messages are available
-            ws.send(JSON.stringify({
-              type: 'message-available',
-              messageCount: messages.length
-            }));
+            const fromSender = messages.filter(m => {
+              const inner = m.data || m;
+              return (inner.from || 'sender') === 'sender';
+            });
+            if (fromSender.length > 0) {
+              ws.send(JSON.stringify({
+                type: 'message-available',
+                messageCount: fromSender.length
+              }));
+            }
+          }
+        }
+
+        // If connector subscribes, check for any queued messages from main
+        if (ws.role === 'sender') {
+          const messages = connManager.getMessages(code);
+          if (messages && messages.length > 0) {
+            const fromMain = messages.filter(m => {
+              const inner = m.data || m;
+              return (inner.from || 'sender') === 'main';
+            });
+            if (fromMain.length > 0) {
+              ws.send(JSON.stringify({
+                type: 'message-available',
+                messageCount: fromMain.length
+              }));
+            }
           }
         }
       }

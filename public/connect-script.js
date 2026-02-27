@@ -17,6 +17,7 @@ let wsToken = null;  // WebSocket authentication token
 let dhKeyPairPending = null;  // Store DH key pair while waiting for main's key
 let mainKeyResolver = null;  // Resolver for waiting on main's key
 let maxFileSize = 5 * 1024 * 1024 * 1024; // Default 5GB, will be updated from server
+let incomingMessageIds = new Set(); // Track messages received from main
 
 // Fetch and display max file size on page load
 async function displayMaxFileSize() {
@@ -378,7 +379,7 @@ function setupWebSocket() {
       console.log('WebSocket message:', data);
       
       if (data.type === 'receiver-key-available' && data.initiatorPublicKey) {
-        // Main's public key is now available
+        // Receiver's public key is now available
         if (dhKeyPairPending && mainKeyResolver) {
           await completeKeyExchange(dhKeyPairPending, data.initiatorPublicKey);
           mainKeyResolver();
@@ -394,9 +395,9 @@ function setupWebSocket() {
           dhKeyPairPending = null;
         }
       } else if (data.type === 'message-available') {
-        // New message available from main, fetch and display it
-        if (encryptionKey) {
-          await fetchAndDisplayReceivedMessages();
+        // Main has sent a message to the connector
+        if (encryptionKey && connectionCode) {
+          await fetchIncomingMessages();
         }
       }
     } catch (error) {
@@ -461,8 +462,8 @@ async function completeKeyExchange(dhKeyPair, mainPublicKeyHex) {
     encryptionKey = await deriveKeyFromSharedSecret(sharedSecret);
     console.log('Connector: Encryption key established via DH');
 
-    // Hash the shared secret and display as 3-word code
-    const keyHash = await hashBuffer(sharedSecret);
+    // Hash the encryption key and display as 3-word code
+    const keyHash = await hashBuffer(encryptionKey);
     console.log('Connector: Key hash computed:', keyHash);
     
     const keyWords = await hashToWords(keyHash);
@@ -554,7 +555,7 @@ async function connectToMain() {
     wsToken = data.wsToken;  // Store WebSocket auth token
 
     // If main's public key is not immediately available, wait via WebSocket
-    if (!data.initiatorPublicKey) {
+    if (!joinResponse.initiatorPublicKey) {
       status.innerHTML = '<span>Waiting for main to join...</span>';
       console.log('Connector: Waiting for main public key');
       
@@ -663,6 +664,7 @@ async function sendMessage() {
       const textFormData = new FormData();
       textFormData.append('code', connectionCode);
       textFormData.append('messageType', 'text');
+      textFormData.append('senderRole', 'sender');
       
       // Encrypt the text using AES-256-GCM
       const encoder = new TextEncoder();
@@ -715,6 +717,7 @@ async function sendMessage() {
       const formData = new FormData();
       formData.append('code', connectionCode);
       formData.append('messageType', 'files');
+      formData.append('senderRole', 'sender');
       
       const key = await crypto.subtle.importKey(
         'raw',
@@ -852,16 +855,18 @@ async function sendMessage() {
 }
 
 function displaySentMessages() {
-  const messagesList = document.getElementById('messagesList');
+  const container = document.getElementById('sentMessagesContainer');
+  if (!container) return;
+
   if (sentMessages.length === 0) {
-    messagesList.innerHTML = '';
+    container.innerHTML = '';
     return;
   }
   
-  messagesList.innerHTML = '<div class="sent-messages-title">Sent Messages</div>';
+  container.innerHTML = '<div class="sent-messages-title">Sent Messages</div>';
   
   // Display messages in reverse order (newest first)
-  [...sentMessages].reverse().forEach((msg, idx) => {
+  [...sentMessages].reverse().forEach((msg) => {
     const msgDiv = document.createElement('div');
     msgDiv.className = 'sent-message';
     
@@ -882,7 +887,7 @@ function displaySentMessages() {
       `;
     }
     
-    messagesList.appendChild(msgDiv);
+    container.appendChild(msgDiv);
   });
 }
 
@@ -937,6 +942,264 @@ async function hashToWords(hashHex) {
   return words.join(' ');
 }
 
+// ===== Connector: receive & decrypt messages from main =====
+
+async function fetchIncomingMessages() {
+  if (!encryptionKey || !connectionCode) {
+    console.warn('Cannot fetch incoming messages: encryption key or connection code missing');
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/message/retrieve/${connectionCode}`);
+
+    if (response.status === 429) {
+      await showRateLimitError();
+      return;
+    }
+
+    const data = await response.json();
+
+    if (data.messages && data.messages.length > 0) {
+      console.log('Incoming messages received:', data.messages);
+
+      const newMessages = data.messages.filter(msgWrapper => {
+        const inner = msgWrapper.data || msgWrapper;
+        const from = inner.from || 'sender';
+        if (from !== 'main') return false;
+
+        const msgId = msgWrapper.timestamp || inner.timestamp;
+        return msgId && !incomingMessageIds.has(msgId);
+      });
+
+      if (newMessages.length > 0) {
+        newMessages.forEach(msgWrapper => {
+          const inner = msgWrapper.data || msgWrapper;
+          const msgId = msgWrapper.timestamp || inner.timestamp;
+          if (msgId) incomingMessageIds.add(msgId);
+        });
+
+        await displayIncomingMessages(newMessages);
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching incoming messages:', error);
+  }
+}
+
+async function displayIncomingMessages(messages) {
+  const container = document.getElementById('incomingMessagesContainer');
+  if (!container) return;
+
+  // Only insert the title once
+  if (!container.querySelector('.incoming-messages-title')) {
+    const title = document.createElement('div');
+    title.className = 'incoming-messages-title';
+    title.textContent = 'Messages from Main';
+    container.appendChild(title);
+  }
+
+  for (const msgWrapper of messages) {
+    const msg = msgWrapper.data || msgWrapper;
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'received-message';
+
+    if (msg.type === 'text') {
+      let decrypted = '';
+      if (msg.ciphertext && msg.iv && encryptionKey) {
+        decrypted = await decryptIncomingText(msg.ciphertext, msg.iv, encryptionKey);
+      } else if (msg.text) {
+        decrypted = msg.text;
+      } else {
+        decrypted = '[Unable to decrypt message]';
+      }
+
+      msgDiv.innerHTML = `
+        <div class="message-type">Text (from main)</div>
+        <div class="message-content">${escapeHtml(decrypted).replace(/\n/g, '<br>')}</div>
+      `;
+    } else if (msg.type === 'files') {
+      let filesHtml = '';
+      if (msg.files && msg.files.length > 0) {
+        filesHtml = await Promise.all(msg.files.map(async (f) => {
+          let displayName = f.originalName;
+          if (f.encryptedName && f.nameIv && encryptionKey) {
+            displayName = await decryptIncomingText(f.encryptedName, f.nameIv, encryptionKey);
+          }
+          return `
+            <div class="file-item-container">
+              <a href="#" class="file-item file-download-link" data-filename="${f.filename}" data-name="${displayName}" data-iv="${f.iv || ''}" data-hash="${f.hash || ''}" data-size="${f.size || 0}" style="cursor: pointer;">${escapeHtml(displayName)}</a>
+            </div>
+          `;
+        })).then(results => results.join(''));
+      } else {
+        filesHtml = '<p style="color: #999;">No files</p>';
+      }
+
+      msgDiv.innerHTML = `
+        <div class="message-type">Files (from main)</div>
+        <div class="message-files">
+          ${filesHtml}
+        </div>
+      `;
+    }
+
+    // Newest at top
+    const firstChild = container.querySelector('.received-message');
+    if (firstChild) {
+      container.insertBefore(msgDiv, firstChild);
+    } else {
+      container.appendChild(msgDiv);
+    }
+  }
+}
+
+async function decryptIncomingText(ciphertext, iv, keyBytes) {
+  try {
+    if (!ciphertext || !iv) return '[No message content]';
+
+    const ciphertextBuffer = hexToArray(ciphertext);
+    const ivBuffer = hexToArray(iv);
+
+    const key = await crypto.subtle.importKey(
+      'raw',
+      keyBytes,
+      { name: 'AES-GCM' },
+      false,
+      ['decrypt']
+    );
+
+    const decrypted = await crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv: ivBuffer
+      },
+      key,
+      ciphertextBuffer
+    );
+
+    const decoder = new TextDecoder();
+    return decoder.decode(decrypted);
+  } catch (e) {
+    console.error('Incoming text decryption error:', e);
+    return '[Decryption failed]';
+  }
+}
+
+function hexToArray(hex) {
+  const bytes = [];
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes.push(parseInt(hex.substr(i, 2), 16));
+  }
+  return new Uint8Array(bytes);
+}
+
+async function decryptIncomingFileData(encryptedBuffer, iv, keyBytes) {
+  try {
+    if (!encryptedBuffer || !iv) return null;
+
+    const ivBuffer = hexToArray(iv);
+
+    const key = await crypto.subtle.importKey(
+      'raw',
+      keyBytes,
+      { name: 'AES-GCM' },
+      false,
+      ['decrypt']
+    );
+
+    const decrypted = await crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv: ivBuffer
+      },
+      key,
+      encryptedBuffer
+    );
+
+    return decrypted;
+  } catch (e) {
+    console.error('Incoming file decryption error:', e);
+    return null;
+  }
+}
+
+async function downloadIncomingFile(filename, originalName, iv, hash, fileSize) {
+  try {
+    if (!iv) {
+      alert('Missing IV for file decryption - file cannot be decrypted');
+      return;
+    }
+
+    if (!encryptionKey) {
+      alert('Encryption key not available - unable to decrypt file');
+      return;
+    }
+
+    // Warn user if file is large (> 50MB)
+    if (fileSize > 52428800) {
+      const fileSizeMB = (fileSize / 1048576).toFixed(2);
+      const proceed = confirm(`This file is ${fileSizeMB} MB. Downloading and decrypting large files may take a moment. Please be patient.\n\nContinue?`);
+      if (!proceed) return;
+    }
+
+    const response = await fetch(`/api/file/download/${encodeURIComponent(filename)}`);
+
+    if (response.status === 429) {
+      await showRateLimitError();
+      return;
+    }
+
+    if (!response.ok) {
+      alert(`Failed to download file: ${response.statusText}`);
+      return;
+    }
+
+    const encryptedBuffer = await response.arrayBuffer();
+    const decryptedBuffer = await decryptIncomingFileData(encryptedBuffer, iv, encryptionKey);
+    if (!decryptedBuffer) {
+      alert('Failed to decrypt file');
+      return;
+    }
+
+    if (hash) {
+      const hashArray = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', decryptedBuffer)));
+      const computedHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+      if (computedHash !== hash) {
+        alert('Warning: Hash verification failed! The file may have been corrupted or tampered with.');
+      }
+    }
+
+    const blob = new Blob([decryptedBuffer]);
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = originalName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('Error downloading incoming file:', error);
+    alert(`Error downloading file: ${error.message}`);
+  }
+}
+
+// Event delegation for incoming file download links
+document.addEventListener('click', function(e) {
+  const link = e.target.closest('.file-download-link');
+  if (link) {
+    e.preventDefault();
+    const filename = link.dataset.filename;
+    const name = link.dataset.name;
+    const iv = link.dataset.iv;
+    const hash = link.dataset.hash;
+    const size = parseInt(link.dataset.size) || 0;
+    downloadIncomingFile(filename, name, iv, hash, size);
+  }
+});
+
 function showError(message) {
   const errorDiv = document.getElementById('error');
   errorDiv.textContent = message;
@@ -976,175 +1239,4 @@ function showSuccess(message) {
   setTimeout(() => {
     successDiv.style.display = 'none';
   }, 5000);
-}
-// Track displayed received messages to avoid duplicates
-const displayedReceivedMessageIds = new Set();
-
-async function fetchAndDisplayReceivedMessages() {
-  if (!encryptionKey || !connectionCode) {
-    return;
-  }
-
-  try {
-    const response = await fetch(`/api/message/retrieve/${connectionCode}`);
-    
-    if (response.status === 429) {
-      await showRateLimitError();
-      return;
-    }
-    
-    const data = await response.json();
-    
-    if (data.messages && data.messages.length > 0) {
-      // Filter out already displayed messages
-      const newMessages = data.messages.filter(msg => {
-        const msgId = msg.timestamp;
-        return msgId && !displayedReceivedMessageIds.has(msgId);
-      });
-      
-      if (newMessages.length > 0) {
-        // Track these message IDs as displayed
-        newMessages.forEach(msg => {
-          if (msg.timestamp) displayedReceivedMessageIds.add(msg.timestamp);
-        });
-        
-        displayReceivedMessages(newMessages);
-      }
-    }
-  } catch (error) {
-    console.error('Error fetching received messages:', error);
-  }
-}
-
-async function displayReceivedMessages(messages) {
-  const messagesList = document.getElementById('messagesList');
-  
-  // Create or update received messages section
-  let receivedSection = document.getElementById('receivedMessagesSection');
-  if (!receivedSection) {
-    const titleDiv = document.createElement('div');
-    titleDiv.id = 'receivedMessagesSection';
-    titleDiv.className = 'received-messages-title';
-    titleDiv.textContent = 'Received Messages from Main';
-    messagesList.appendChild(titleDiv);
-    receivedSection = titleDiv;
-  }
-  
-  for (const msg of messages) {
-    const msgDiv = document.createElement('div');
-    msgDiv.className = 'received-message';
-    
-    if (msg.type === 'text') {
-      let decrypted = '';
-      
-      console.log('Processing text message (connector):', {
-        hasCiphertext: !!msg.ciphertext,
-        hasIv: !!msg.iv,
-        hasAuthTag: !!msg.authTag,
-        hasEncryptionKey: !!encryptionKey,
-        msgKeys: Object.keys(msg)
-      });
-      
-      if (msg.ciphertext && msg.iv && msg.authTag && encryptionKey) {
-        decrypted = await decryptText(msg.ciphertext, msg.iv, msg.authTag, encryptionKey);
-      } else if (msg.text) {
-        decrypted = msg.text;
-      } else {
-        console.warn('Cannot decrypt message (connector) - missing fields', {
-          ciphertext: msg.ciphertext ? 'present' : 'MISSING',
-          iv: msg.iv ? 'present' : 'MISSING',
-          authTag: msg.authTag ? 'present' : 'MISSING',
-          encryptionKey: encryptionKey ? 'present' : 'MISSING'
-        });
-        decrypted = '[Unable to decrypt message]';
-      }
-      
-      msgDiv.innerHTML = `
-        <div class="message-type">Text from Main</div>
-        <div class="message-content">${escapeHtml(decrypted).replace(/\n/g, '<br>')}</div>
-      `;
-    } else if (msg.type === 'files') {
-      let filesHtml = '';
-      if (msg.files && msg.files.length > 0) {
-        filesHtml = await Promise.all(msg.files.map(async (f) => {
-          let displayName = f.originalName || f.filename;
-          if (f.encryptedName && f.nameIv && f.nameAuthTag && encryptionKey) {
-            displayName = await decryptText(f.encryptedName, f.nameIv, f.nameAuthTag, encryptionKey);
-          }
-          return `
-            <div class="sent-file">
-              <div>${escapeHtml(displayName)} <span class="file-size">(${formatFileSize(f.size)})</span></div>
-            </div>
-          `;
-        })).then(results => results.join(''));
-      }
-      
-      msgDiv.innerHTML = `
-        <div class="message-type">Files from Main</div>
-        <div class="sent-files">
-          ${filesHtml || '<p style="color: #999;">No files</p>'}
-        </div>
-      `;
-    }
-    
-    messagesList.appendChild(msgDiv);
-  }
-}
-
-async function decryptText(ciphertext, iv, authTag, key) {
-  try {
-    console.log('=== decryptText DEBUG (connector) ===');
-    console.log('Ciphertext:', ciphertext ? `${ciphertext.substring(0, 50)}... (length: ${ciphertext.length})` : 'MISSING');
-    console.log('IV:', iv ? `${iv.substring(0, 20)}... (length: ${iv.length})` : 'MISSING');
-    console.log('AuthTag:', authTag ? `${authTag.substring(0, 20)}... (length: ${authTag.length})` : 'MISSING');
-    console.log('EncryptionKey:', key ? `CryptoKey (type: ${key.type})` : 'MISSING');
-    
-    if (!ciphertext || !iv || !authTag) {
-      console.warn('Missing required decryption parameters');
-      return '[Unable to decrypt - missing parameters]';
-    }
-    
-    if (!key) {
-      console.warn('Missing encryption key');
-      return '[Unable to decrypt - missing key]';
-    }
-    
-    const ciphertextBytes = new Uint8Array(ciphertext.match(/.{1,2}/g).map(b => parseInt(b, 16)));
-    console.log('Ciphertext bytes length:', ciphertextBytes.length);
-    
-    const ivBytes = new Uint8Array(iv.match(/.{1,2}/g).map(b => parseInt(b, 16)));
-    console.log('IV bytes length:', ivBytes.length);
-    
-    const authTagBytes = new Uint8Array(authTag.match(/.{1,2}/g).map(b => parseInt(b, 16)));
-    console.log('AuthTag bytes length:', authTagBytes.length);
-    
-    // Combine ciphertext and auth tag for AES-GCM decryption
-    const combined = new Uint8Array(ciphertextBytes.length + authTagBytes.length);
-    combined.set(ciphertextBytes, 0);
-    combined.set(authTagBytes, ciphertextBytes.length);
-    console.log('Combined buffer length:', combined.length);
-    
-    const algorithm = { name: 'AES-GCM', iv: ivBytes };
-    console.log('Calling crypto.subtle.decrypt with AES-GCM algorithm...');
-    
-    const decryptedBuffer = await crypto.subtle.decrypt(algorithm, key, combined);
-    
-    console.log('Decryption successful, decoded length:', decryptedBuffer.byteLength);
-    const decoder = new TextDecoder();
-    const result = decoder.decode(decryptedBuffer);
-    console.log('Decoded text:', result);
-    console.log('=== decryptText SUCCESS (connector) ===');
-    return result;
-  } catch (error) {
-    console.error('=== TEXT DECRYPTION ERROR (connector) ===');
-    console.error('Error name:', error.name);
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
-    console.error('Ciphertext provided:', !!ciphertext);
-    console.error('IV provided:', !!iv);
-    console.error('AuthTag provided:', !!authTag);
-    console.error('EncryptionKey provided:', !!key);
-    console.error('=== END ERROR ===');
-    return '[Unable to decrypt]';
-  }
 }
