@@ -555,7 +555,7 @@ async function connectToMain() {
     wsToken = data.wsToken;  // Store WebSocket auth token
 
     // If main's public key is not immediately available, wait via WebSocket
-    if (!joinResponse.initiatorPublicKey) {
+    if (!data.initiatorPublicKey) {
       status.innerHTML = '<span>Waiting for main to join...</span>';
       console.log('Connector: Waiting for main public key');
       
