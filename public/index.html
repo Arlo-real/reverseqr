@@ -36,31 +36,7 @@
       <div class="spinner"></div>
     </div>
 
-    <!-- Main -> Connector send section, shown after secure channel is established -->
-    <div id="sendSection" class="message-section" style="display: none; margin-top: 25px;">
-      <div class="messages-title">Send to Connector</div>
-      <div>
-        <label class="section-title">Text Message</label>
-        <textarea id="mainTextInput" class="text-input" placeholder="Enter your message (or skip if you only want to upload files)"></textarea>
-      </div>
-
-      <div style="margin-top: 15px;">
-        <label class="section-title">Upload Files</label>
-        <div class="file-upload" id="mainFileUploadArea">
-          <input type="file" id="mainFileInput" multiple />
-          <label class="file-upload-label">
-            Click to browse or drag &amp; drop files here
-          </label>
-        </div>
-        <div id="mainFilesList" class="files-list"></div>
-      </div>
-
-      <button class="btn send-button" id="mainSendBtn" style="margin-top: 15px;">
-        Send Securely
-      </button>
-    </div>
-
-    <div id="messagesSection" class="messages-section" style="display: none; margin-top: 30px;">
+    <div id="messagesSection" class="messages-section" style="display: none;">
       <div class="messages-title">Received Messages</div>
       <div id="messagesList"></div>
     </div>

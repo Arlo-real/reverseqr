@@ -491,7 +491,7 @@ app.get('/api/session/status/:code', (req, res) => {
 
 app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.array('files'), (req, res) => {
   try {
-    let { code, messageType, ciphertext, iv, authTag, hash, text, senderRole } = req.body;
+    let { code, messageType, ciphertext, iv, authTag, hash, text } = req.body;
     const clientIp = req.ip;
     
     // Handle file IVs and hashes from FormData
@@ -543,14 +543,9 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
       return res.status(404).json({ error: 'Connection not found' });
     }
 
-    // Determine who is sending this message so we can route notifications.
-    // Default to 'sender' (connector) for backwards compatibility if not provided.
-    const fromRole = senderRole === 'main' ? 'main' : 'sender';
-
     let messageData = {
       type: messageType || 'text',
-      timestamp: Date.now(),
-      from: fromRole
+      timestamp: Date.now()
     };
 
     if (messageType === 'text') {
@@ -621,16 +616,11 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
     const details = messageType === 'files' ? `(${req.files.length} files) size: ${formatBytes(totalSize)}` : `size: ${formatBytes(totalSize)}`;
     logEvent(clientIp, action, details);
     
-    // Determine which role should be notified about this new message.
-    // If main sent it, notify the connector ('sender'); otherwise notify main.
-    const targetRole = fromRole === 'main' ? 'sender' : 'main';
-
-    // Notify the other party via WebSocket that a new message is available
-    notifySessionRole(code, targetRole, {
+    // Notify main via WebSocket that a new message is available
+    notifySessionRole(code, 'main', {
       type: 'message-available',
       messageId: messageData.timestamp,
-      messageType: messageData.type,
-      from: fromRole
+      messageType: messageData.type
     });
 
     res.json({
@@ -966,37 +956,15 @@ wss.on('connection', (ws, req) => {
           }
         }
 
-        // If main subscribes, check for any queued messages from the connector
+        // If main subscribes, check for any queued messages
         if (ws.role === 'main') {
           const messages = connManager.getMessages(code);
           if (messages && messages.length > 0) {
-            const fromSender = messages.filter(m => {
-              const inner = m.data || m;
-              return (inner.from || 'sender') === 'sender';
-            });
-            if (fromSender.length > 0) {
-              ws.send(JSON.stringify({
-                type: 'message-available',
-                messageCount: fromSender.length
-              }));
-            }
-          }
-        }
-
-        // If connector subscribes, check for any queued messages from main
-        if (ws.role === 'sender') {
-          const messages = connManager.getMessages(code);
-          if (messages && messages.length > 0) {
-            const fromMain = messages.filter(m => {
-              const inner = m.data || m;
-              return (inner.from || 'sender') === 'main';
-            });
-            if (fromMain.length > 0) {
-              ws.send(JSON.stringify({
-                type: 'message-available',
-                messageCount: fromMain.length
-              }));
-            }
+            // Notify main that messages are available
+            ws.send(JSON.stringify({
+              type: 'message-available',
+              messageCount: messages.length
+            }));
           }
         }
       }

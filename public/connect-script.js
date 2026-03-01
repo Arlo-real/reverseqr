@@ -17,7 +17,6 @@ let wsToken = null;  // WebSocket authentication token
 let dhKeyPairPending = null;  // Store DH key pair while waiting for main's key
 let mainKeyResolver = null;  // Resolver for waiting on main's key
 let maxFileSize = 5 * 1024 * 1024 * 1024; // Default 5GB, will be updated from server
-let incomingMessageIds = new Set(); // Track messages received from main
 
 // Fetch and display max file size on page load
 async function displayMaxFileSize() {
@@ -380,24 +379,19 @@ function setupWebSocket() {
       
       if (data.type === 'receiver-key-available' && data.initiatorPublicKey) {
         // Receiver's public key is now available
-        if (dhKeyPairPending && mainKeyResolver) {
+        if (dhKeyPairPending && receiverKeyResolver) {
           await completeKeyExchange(dhKeyPairPending, data.initiatorPublicKey);
-          mainKeyResolver();
-          mainKeyResolver = null;
+          receiverKeyResolver();
+          receiverKeyResolver = null;
           dhKeyPairPending = null;
         }
       } else if (data.type === 'keys-available' && data.initiatorPublicKey) {
         // Keys were already available when we subscribed
-        if (dhKeyPairPending && mainKeyResolver) {
+        if (dhKeyPairPending && receiverKeyResolver) {
           await completeKeyExchange(dhKeyPairPending, data.initiatorPublicKey);
-          mainKeyResolver();
-          mainKeyResolver = null;
+          receiverKeyResolver();
+          receiverKeyResolver = null;
           dhKeyPairPending = null;
-        }
-      } else if (data.type === 'message-available') {
-        // Main has sent a message to the connector
-        if (encryptionKey && connectionCode) {
-          await fetchIncomingMessages();
         }
       }
     } catch (error) {
@@ -555,7 +549,7 @@ async function connectToMain() {
     wsToken = data.wsToken;  // Store WebSocket auth token
 
     // If main's public key is not immediately available, wait via WebSocket
-    if (!data.initiatorPublicKey) {
+    if (!joinResponse.initiatorPublicKey) {
       status.innerHTML = '<span>Waiting for main to join...</span>';
       console.log('Connector: Waiting for main public key');
       
@@ -664,7 +658,6 @@ async function sendMessage() {
       const textFormData = new FormData();
       textFormData.append('code', connectionCode);
       textFormData.append('messageType', 'text');
-      textFormData.append('senderRole', 'sender');
       
       // Encrypt the text using AES-256-GCM
       const encoder = new TextEncoder();
@@ -717,7 +710,6 @@ async function sendMessage() {
       const formData = new FormData();
       formData.append('code', connectionCode);
       formData.append('messageType', 'files');
-      formData.append('senderRole', 'sender');
       
       const key = await crypto.subtle.importKey(
         'raw',
@@ -855,18 +847,16 @@ async function sendMessage() {
 }
 
 function displaySentMessages() {
-  const container = document.getElementById('sentMessagesContainer');
-  if (!container) return;
-
+  const messagesList = document.getElementById('messagesList');
   if (sentMessages.length === 0) {
-    container.innerHTML = '';
+    messagesList.innerHTML = '';
     return;
   }
   
-  container.innerHTML = '<div class="sent-messages-title">Sent Messages</div>';
+  messagesList.innerHTML = '<div class="sent-messages-title">Sent Messages</div>';
   
   // Display messages in reverse order (newest first)
-  [...sentMessages].reverse().forEach((msg) => {
+  [...sentMessages].reverse().forEach((msg, idx) => {
     const msgDiv = document.createElement('div');
     msgDiv.className = 'sent-message';
     
@@ -887,7 +877,7 @@ function displaySentMessages() {
       `;
     }
     
-    container.appendChild(msgDiv);
+    messagesList.appendChild(msgDiv);
   });
 }
 
@@ -941,264 +931,6 @@ async function hashToWords(hashHex) {
   
   return words.join(' ');
 }
-
-// ===== Connector: receive & decrypt messages from main =====
-
-async function fetchIncomingMessages() {
-  if (!encryptionKey || !connectionCode) {
-    console.warn('Cannot fetch incoming messages: encryption key or connection code missing');
-    return;
-  }
-
-  try {
-    const response = await fetch(`/api/message/retrieve/${connectionCode}`);
-
-    if (response.status === 429) {
-      await showRateLimitError();
-      return;
-    }
-
-    const data = await response.json();
-
-    if (data.messages && data.messages.length > 0) {
-      console.log('Incoming messages received:', data.messages);
-
-      const newMessages = data.messages.filter(msgWrapper => {
-        const inner = msgWrapper.data || msgWrapper;
-        const from = inner.from || 'sender';
-        if (from !== 'main') return false;
-
-        const msgId = msgWrapper.timestamp || inner.timestamp;
-        return msgId && !incomingMessageIds.has(msgId);
-      });
-
-      if (newMessages.length > 0) {
-        newMessages.forEach(msgWrapper => {
-          const inner = msgWrapper.data || msgWrapper;
-          const msgId = msgWrapper.timestamp || inner.timestamp;
-          if (msgId) incomingMessageIds.add(msgId);
-        });
-
-        await displayIncomingMessages(newMessages);
-      }
-    }
-  } catch (error) {
-    console.error('Error fetching incoming messages:', error);
-  }
-}
-
-async function displayIncomingMessages(messages) {
-  const container = document.getElementById('incomingMessagesContainer');
-  if (!container) return;
-
-  // Only insert the title once
-  if (!container.querySelector('.incoming-messages-title')) {
-    const title = document.createElement('div');
-    title.className = 'incoming-messages-title';
-    title.textContent = 'Messages from Main';
-    container.appendChild(title);
-  }
-
-  for (const msgWrapper of messages) {
-    const msg = msgWrapper.data || msgWrapper;
-    const msgDiv = document.createElement('div');
-    msgDiv.className = 'received-message';
-
-    if (msg.type === 'text') {
-      let decrypted = '';
-      if (msg.ciphertext && msg.iv && encryptionKey) {
-        decrypted = await decryptIncomingText(msg.ciphertext, msg.iv, encryptionKey);
-      } else if (msg.text) {
-        decrypted = msg.text;
-      } else {
-        decrypted = '[Unable to decrypt message]';
-      }
-
-      msgDiv.innerHTML = `
-        <div class="message-type">Text (from main)</div>
-        <div class="message-content">${escapeHtml(decrypted).replace(/\n/g, '<br>')}</div>
-      `;
-    } else if (msg.type === 'files') {
-      let filesHtml = '';
-      if (msg.files && msg.files.length > 0) {
-        filesHtml = await Promise.all(msg.files.map(async (f) => {
-          let displayName = f.originalName;
-          if (f.encryptedName && f.nameIv && encryptionKey) {
-            displayName = await decryptIncomingText(f.encryptedName, f.nameIv, encryptionKey);
-          }
-          return `
-            <div class="file-item-container">
-              <a href="#" class="file-item file-download-link" data-filename="${f.filename}" data-name="${displayName}" data-iv="${f.iv || ''}" data-hash="${f.hash || ''}" data-size="${f.size || 0}" style="cursor: pointer;">${escapeHtml(displayName)}</a>
-            </div>
-          `;
-        })).then(results => results.join(''));
-      } else {
-        filesHtml = '<p style="color: #999;">No files</p>';
-      }
-
-      msgDiv.innerHTML = `
-        <div class="message-type">Files (from main)</div>
-        <div class="message-files">
-          ${filesHtml}
-        </div>
-      `;
-    }
-
-    // Newest at top
-    const firstChild = container.querySelector('.received-message');
-    if (firstChild) {
-      container.insertBefore(msgDiv, firstChild);
-    } else {
-      container.appendChild(msgDiv);
-    }
-  }
-}
-
-async function decryptIncomingText(ciphertext, iv, keyBytes) {
-  try {
-    if (!ciphertext || !iv) return '[No message content]';
-
-    const ciphertextBuffer = hexToArray(ciphertext);
-    const ivBuffer = hexToArray(iv);
-
-    const key = await crypto.subtle.importKey(
-      'raw',
-      keyBytes,
-      { name: 'AES-GCM' },
-      false,
-      ['decrypt']
-    );
-
-    const decrypted = await crypto.subtle.decrypt(
-      {
-        name: 'AES-GCM',
-        iv: ivBuffer
-      },
-      key,
-      ciphertextBuffer
-    );
-
-    const decoder = new TextDecoder();
-    return decoder.decode(decrypted);
-  } catch (e) {
-    console.error('Incoming text decryption error:', e);
-    return '[Decryption failed]';
-  }
-}
-
-function hexToArray(hex) {
-  const bytes = [];
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes.push(parseInt(hex.substr(i, 2), 16));
-  }
-  return new Uint8Array(bytes);
-}
-
-async function decryptIncomingFileData(encryptedBuffer, iv, keyBytes) {
-  try {
-    if (!encryptedBuffer || !iv) return null;
-
-    const ivBuffer = hexToArray(iv);
-
-    const key = await crypto.subtle.importKey(
-      'raw',
-      keyBytes,
-      { name: 'AES-GCM' },
-      false,
-      ['decrypt']
-    );
-
-    const decrypted = await crypto.subtle.decrypt(
-      {
-        name: 'AES-GCM',
-        iv: ivBuffer
-      },
-      key,
-      encryptedBuffer
-    );
-
-    return decrypted;
-  } catch (e) {
-    console.error('Incoming file decryption error:', e);
-    return null;
-  }
-}
-
-async function downloadIncomingFile(filename, originalName, iv, hash, fileSize) {
-  try {
-    if (!iv) {
-      alert('Missing IV for file decryption - file cannot be decrypted');
-      return;
-    }
-
-    if (!encryptionKey) {
-      alert('Encryption key not available - unable to decrypt file');
-      return;
-    }
-
-    // Warn user if file is large (> 50MB)
-    if (fileSize > 52428800) {
-      const fileSizeMB = (fileSize / 1048576).toFixed(2);
-      const proceed = confirm(`This file is ${fileSizeMB} MB. Downloading and decrypting large files may take a moment. Please be patient.\n\nContinue?`);
-      if (!proceed) return;
-    }
-
-    const response = await fetch(`/api/file/download/${encodeURIComponent(filename)}`);
-
-    if (response.status === 429) {
-      await showRateLimitError();
-      return;
-    }
-
-    if (!response.ok) {
-      alert(`Failed to download file: ${response.statusText}`);
-      return;
-    }
-
-    const encryptedBuffer = await response.arrayBuffer();
-    const decryptedBuffer = await decryptIncomingFileData(encryptedBuffer, iv, encryptionKey);
-    if (!decryptedBuffer) {
-      alert('Failed to decrypt file');
-      return;
-    }
-
-    if (hash) {
-      const hashArray = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', decryptedBuffer)));
-      const computedHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-      if (computedHash !== hash) {
-        alert('Warning: Hash verification failed! The file may have been corrupted or tampered with.');
-      }
-    }
-
-    const blob = new Blob([decryptedBuffer]);
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = originalName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
-  } catch (error) {
-    console.error('Error downloading incoming file:', error);
-    alert(`Error downloading file: ${error.message}`);
-  }
-}
-
-// Event delegation for incoming file download links
-document.addEventListener('click', function(e) {
-  const link = e.target.closest('.file-download-link');
-  if (link) {
-    e.preventDefault();
-    const filename = link.dataset.filename;
-    const name = link.dataset.name;
-    const iv = link.dataset.iv;
-    const hash = link.dataset.hash;
-    const size = parseInt(link.dataset.size) || 0;
-    downloadIncomingFile(filename, name, iv, hash, size);
-  }
-});
 
 function showError(message) {
   const errorDiv = document.getElementById('error');

@@ -12,8 +12,6 @@ let connectionCode = null;
     let dhKeyPair = null;  // Our DH key pair
     let ws = null;  // WebSocket connection
     let wsToken = null;  // WebSocket authentication token
-    // Outgoing message state for main -> connector
-    let mainSelectedFiles = [];
 
     // Set up WebSocket connection
     function setupWebSocket() {
@@ -107,11 +105,6 @@ let connectionCode = null;
         if (qrSection) {
           qrSection.style.display = 'none';
         }
-        // Show the send section now that a secure channel is established
-        const sendSection = document.getElementById('sendSection');
-        if (sendSection) {
-          sendSection.style.display = 'block';
-        }
       } catch (hashError) {
         console.error('Error displaying key hash:', hashError);
       }
@@ -138,21 +131,16 @@ let connectionCode = null;
         if (data.messages && data.messages.length > 0) {
           console.log('Messages received:', data.messages);
           
-          // Filter out already displayed messages and only keep those sent by the connector
-          const newMessages = data.messages.filter(msgWrapper => {
-            const inner = msgWrapper.data || msgWrapper;
-            const from = inner.from || 'sender';
-            if (from !== 'sender') return false;
-
-            const msgId = msgWrapper.timestamp || inner.timestamp;
+          // Filter out already displayed messages
+          const newMessages = data.messages.filter(msg => {
+            const msgId = msg.timestamp || msg.data?.timestamp;
             return msgId && !displayedMessageIds.has(msgId);
           });
           
           if (newMessages.length > 0) {
             // Track these message IDs as displayed
-            newMessages.forEach(msgWrapper => {
-              const inner = msgWrapper.data || msgWrapper;
-              const msgId = msgWrapper.timestamp || inner.timestamp;
+            newMessages.forEach(msg => {
+              const msgId = msg.timestamp || msg.data?.timestamp;
               if (msgId) displayedMessageIds.add(msgId);
             });
             displayMessages(newMessages);
@@ -623,274 +611,10 @@ let connectionCode = null;
       if (copyCodeBtn) {
         copyCodeBtn.addEventListener('click', copyCode);
       }
-
-      // Set up main-side send UI if present
-      const mainSendBtn = document.getElementById('mainSendBtn');
-      if (mainSendBtn) {
-        mainSendBtn.addEventListener('click', sendMainMessage);
-      }
-
-      const mainFileUploadArea = document.getElementById('mainFileUploadArea');
-      if (mainFileUploadArea) {
-        mainFileUploadArea.addEventListener('click', () => {
-          const input = document.getElementById('mainFileInput');
-          if (input) {
-            input.click();
-          }
-        });
-      }
-
-      const mainFileInput = document.getElementById('mainFileInput');
-      if (mainFileInput) {
-        mainFileInput.addEventListener('change', mainHandleFileSelect);
-      }
     });
 
     async function hashBuffer(buffer) {
       const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-
-    // ===== Main -> Connector sending helpers =====
-
-    function mainHandleFileSelect(event) {
-      const files = event.dataTransfer ? event.dataTransfer.files : event.target.files;
-      for (let file of files) {
-        // Avoid duplicate entries by name+size
-        if (!mainSelectedFiles.find(f => f.name === file.name && f.size === file.size)) {
-          mainSelectedFiles.push({ name: file.name, size: file.size, file });
-        }
-      }
-      mainRenderFilesList();
-    }
-
-    function mainRenderFilesList() {
-      const list = document.getElementById('mainFilesList');
-      if (!list) return;
-      list.innerHTML = '';
-      
-      mainSelectedFiles.forEach((file, idx) => {
-        const item = document.createElement('div');
-        item.className = 'file-item';
-        item.innerHTML = `
-          <div style="flex: 1;">
-            <div>${file.name} <span class="file-size">(${mainFormatFileSize(file.size)})</span></div>
-          </div>
-          <button class="remove-file" data-index="${idx}">Remove</button>
-        `;
-        list.appendChild(item);
-      });
-
-      // Attach remove handlers
-      list.querySelectorAll('.remove-file').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const index = parseInt(e.target.getAttribute('data-index'), 10);
-          if (!isNaN(index)) {
-            mainSelectedFiles.splice(index, 1);
-            mainRenderFilesList();
-          }
-        });
-      });
-    }
-
-    function mainFormatFileSize(bytes) {
-      if (bytes === 0) return '0 Bytes';
-      const k = 1024;
-      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-    }
-
-    function arrayToHex(arr) {
-      return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-
-    async function sendMainMessage() {
-      try {
-        if (!encryptionKey) {
-          showError('Secure connection not established. Please wait for the connector to join.');
-          return;
-        }
-
-        const textInput = document.getElementById('mainTextInput');
-        const text = textInput ? textInput.value : '';
-
-        if (!text.trim() && mainSelectedFiles.length === 0) {
-          showError('Please enter a message or select files to send.');
-          return;
-        }
-
-        const sendBtn = document.getElementById('mainSendBtn');
-        if (sendBtn) {
-          sendBtn.disabled = true;
-          sendBtn.innerHTML = '<span class="spinner"></span><span class="spinner"></span><span class="spinner"></span> Sending...';
-        }
-
-        // Send text part if present
-        if (text && text.trim()) {
-          const textFormData = new FormData();
-          textFormData.append('code', connectionCode);
-          textFormData.append('messageType', 'text');
-          textFormData.append('senderRole', 'main');
-
-          const encoder = new TextEncoder();
-          const textData = encoder.encode(text);
-
-          const key = await crypto.subtle.importKey(
-            'raw',
-            encryptionKey,
-            { name: 'AES-GCM' },
-            false,
-            ['encrypt']
-          );
-
-          const iv = crypto.getRandomValues(new Uint8Array(12));
-          const ivHex = arrayToHex(iv);
-
-          const encrypted = await crypto.subtle.encrypt(
-            {
-              name: 'AES-GCM',
-              iv: iv
-            },
-            key,
-            textData
-          );
-
-          const ciphertextHex = arrayToHex(new Uint8Array(encrypted));
-
-          textFormData.append('ciphertext', ciphertextHex);
-          textFormData.append('iv', ivHex);
-          textFormData.append('authTag', '');
-
-          const textResponse = await fetch('/api/message/send', {
-            method: 'POST',
-            body: textFormData
-          });
-
-          if (textResponse.status === 429) {
-            await showRateLimitError();
-            throw new Error('Rate limited while sending text message');
-          }
-
-          if (!textResponse.ok) {
-            const error = await textResponse.json();
-            throw new Error(error.error || 'Failed to send text message from main');
-          }
-        }
-
-        // Send files if selected
-        if (mainSelectedFiles.length > 0) {
-          const formData = new FormData();
-          formData.append('code', connectionCode);
-          formData.append('messageType', 'files');
-          formData.append('senderRole', 'main');
-
-          const key = await crypto.subtle.importKey(
-            'raw',
-            encryptionKey,
-            { name: 'AES-GCM' },
-            false,
-            ['encrypt']
-          );
-
-          for (let fileMetadata of mainSelectedFiles) {
-            const fileBuffer = await fileMetadata.file.arrayBuffer();
-            const fileUint8Array = new Uint8Array(fileBuffer);
-
-            const iv = crypto.getRandomValues(new Uint8Array(12));
-            const ivHex = arrayToHex(iv);
-
-            // Encrypt the file name
-            const fileNameKey = await crypto.subtle.importKey(
-              'raw',
-              encryptionKey,
-              { name: 'AES-GCM' },
-              false,
-              ['encrypt']
-            );
-            const fileNameIv = crypto.getRandomValues(new Uint8Array(12));
-            const fileNameIvHex = arrayToHex(fileNameIv);
-            const fileNameEncoder = new TextEncoder();
-            const fileNameData = fileNameEncoder.encode(fileMetadata.name);
-            const encryptedFileName = await crypto.subtle.encrypt(
-              {
-                name: 'AES-GCM',
-                iv: fileNameIv
-              },
-              fileNameKey,
-              fileNameData
-            );
-            const encryptedFileNameHex = arrayToHex(new Uint8Array(encryptedFileName));
-
-            const encrypted = await crypto.subtle.encrypt(
-              {
-                name: 'AES-GCM',
-                iv: iv
-              },
-              key,
-              fileUint8Array
-            );
-
-            const encryptedBlob = new Blob([new Uint8Array(encrypted)], { type: 'application/octet-stream' });
-            const genericFilename = `encrypted_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            const encryptedFile = new File(
-              [encryptedBlob],
-              genericFilename,
-              { type: 'application/octet-stream' }
-            );
-
-            formData.append('files', encryptedFile);
-            formData.append('fileIvs[]', ivHex);
-            formData.append('fileNames[]', encryptedFileNameHex);
-            formData.append('fileNameIvs[]', fileNameIvHex);
-          }
-
-          const response = await fetch('/api/message/send', {
-            method: 'POST',
-            body: formData
-          });
-
-          if (response.status === 429) {
-            await showRateLimitError();
-            throw new Error('Rate limited while sending files');
-          }
-
-          if (!response.ok) {
-            let errorMessage = 'Failed to send files from main';
-            try {
-              const contentType = response.headers.get('content-type');
-              if (contentType && contentType.includes('application/json')) {
-                const error = await response.json();
-                errorMessage = error.error || errorMessage;
-              } else {
-                errorMessage = `Server error: ${response.status} ${response.statusText}`;
-              }
-            } catch (parseError) {
-              errorMessage = `Server error: ${response.status} ${response.statusText}`;
-            }
-            throw new Error(errorMessage);
-          }
-        }
-
-        // Clear inputs on success
-        if (textInput) {
-          textInput.value = '';
-        }
-        mainSelectedFiles = [];
-        mainRenderFilesList();
-
-        if (sendBtn) {
-          sendBtn.disabled = false;
-          sendBtn.textContent = 'Send Securely';
-        }
-      } catch (error) {
-        showError('Failed to send message from main: ' + error.message);
-        console.error(error);
-        const sendBtn = document.getElementById('mainSendBtn');
-        if (sendBtn) {
-          sendBtn.disabled = false;
-          sendBtn.textContent = 'Send Securely';
-        }
-      }
     }
