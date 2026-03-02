@@ -222,6 +222,20 @@ document.addEventListener('drop', (e) => {
   handleFileSelect({ dataTransfer: e.dataTransfer });
 });
 
+// Event delegation for file download links from main
+document.addEventListener('click', function(e) {
+  const link = e.target.closest('.file-download-link');
+  if (link) {
+    e.preventDefault();
+    const filename = link.dataset.filename;
+    const name = link.dataset.name;
+    const iv = link.dataset.iv;
+    const hash = link.dataset.hash;
+    const size = parseInt(link.dataset.size) || 0;
+    downloadFile(filename, name, iv, hash, size);
+  }
+});
+
 function handleFileSelect(event) {
   const files = event.dataTransfer ? event.dataTransfer.files : event.target.files;
   for (let file of files) {
@@ -1000,6 +1014,107 @@ function hexToArray(hex) {
     bytes.push(parseInt(hex.substr(i, 2), 16));
   }
   return new Uint8Array(bytes);
+}
+
+// Decrypt binary file data
+async function decryptFileData(encryptedBuffer, iv, encryptionKey) {
+  try {
+    if (!encryptedBuffer || !iv) return null;
+    
+    const ivBuffer = hexToArray(iv);
+    
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encryptionKey,
+      { name: 'AES-GCM' },
+      false,
+      ['decrypt']
+    );
+    
+    const decrypted = await crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv: ivBuffer
+      },
+      key,
+      encryptedBuffer
+    );
+    
+    return decrypted;
+  } catch (e) {
+    console.error('File decryption error:', e);
+    return null;
+  }
+}
+
+// Download and decrypt a file sent by main
+async function downloadFile(filename, originalName, iv, hash, fileSize) {
+  try {
+    console.log('[CONNECTOR] Downloading file:', originalName, 'Size:', fileSize);
+    if (!iv) {
+      showError('Missing IV for file decryption - file cannot be decrypted');
+      return;
+    }
+    
+    if (!encryptionKey) {
+      showError('Encryption key not available - unable to decrypt file');
+      return;
+    }
+    
+    // Warn user if file is large (> 50MB)
+    if (fileSize > 52428800) {
+      const fileSizeMB = (fileSize / 1048576).toFixed(2);
+      const proceed = confirm(`This file is ${fileSizeMB} MB. Downloading and decrypting large files may take a moment. Please be patient.\n\nContinue?`);
+      if (!proceed) return;
+    }
+    
+    // Fetch the encrypted file from the server
+    const response = await fetch(`/api/file/download/${encodeURIComponent(filename)}`);
+    
+    if (response.status === 429) {
+      await showRateLimitError();
+      return;
+    }
+    
+    if (!response.ok) {
+      showError(`Failed to download file: ${response.statusText}`);
+      return;
+    }
+    
+    // Get the file as an array buffer
+    const encryptedBuffer = await response.arrayBuffer();
+    
+    // Decrypt the file
+    const decryptedBuffer = await decryptFileData(encryptedBuffer, iv, encryptionKey);
+    if (!decryptedBuffer) {
+      showError('Failed to decrypt file');
+      return;
+    }
+    
+    // Verify hash if provided
+    if (hash) {
+      const hashArray = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', decryptedBuffer)));
+      const computedHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      
+      if (computedHash !== hash) {
+        showError('Warning: Hash verification failed! The file may have been corrupted or tampered with.');
+      }
+    }
+    
+    // Create a download link for the decrypted file
+    const blob = new Blob([decryptedBuffer]);
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = originalName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('Error downloading file:', error);
+    showError(`Error downloading file: ${error.message}`);
+  }
 }
 
 async function displayMessagesFromMain(messages) {
