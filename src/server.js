@@ -594,8 +594,8 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
       };
     }
 
-    // Store the message
-    connManager.storeMessage(code, messageData);
+    // Store the message from connector
+    connManager.storeMessage(code, 'connector', messageData);
     
     // Calculate total size for logging
     // For text messages: ciphertext is hex-encoded (each 2 chars = 1 byte)
@@ -620,7 +620,8 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
     notifySessionRole(code, 'main', {
       type: 'message-available',
       messageId: messageData.timestamp,
-      messageType: messageData.type
+      messageType: messageData.type,
+      sender: 'connector'
     });
 
     res.json({
@@ -629,6 +630,150 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
     });
   } catch (error) {
     console.error('Error sending message:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * API: Send message from main to connector
+ * Similar to /api/message/send but stores in mainMessages array
+ */
+app.post('/api/message/send/main', uploadLimiter, checkStorageMiddleware, upload.array('files'), (req, res) => {
+  try {
+    let { code, messageType, ciphertext, iv, authTag, hash, text } = req.body;
+    const clientIp = req.ip;
+    
+    // Handle file IVs and hashes from FormData
+    let fileIvs = [];
+    let fileHashes = [];
+    let fileNames = [];
+    let fileNameIvs = [];
+    
+    // Try both forms: 'fileIvs[]' and 'fileIvs' (form-data strips the brackets)
+    const ivKey = req.body['fileIvs[]'] !== undefined ? 'fileIvs[]' : 'fileIvs';
+    const hashKey = req.body['fileHashes[]'] !== undefined ? 'fileHashes[]' : 'fileHashes';
+    const nameKey = req.body['fileNames[]'] !== undefined ? 'fileNames[]' : 'fileNames';
+    const nameIvKey = req.body['fileNameIvs[]'] !== undefined ? 'fileNameIvs[]' : 'fileNameIvs';
+    
+    if (req.body[ivKey]) {
+      fileIvs = Array.isArray(req.body[ivKey]) 
+        ? req.body[ivKey] 
+        : [req.body[ivKey]];
+    }
+    
+    if (req.body[hashKey]) {
+      fileHashes = Array.isArray(req.body[hashKey]) 
+        ? req.body[hashKey] 
+        : [req.body[hashKey]];
+    }
+    
+    if (req.body[nameKey]) {
+      fileNames = Array.isArray(req.body[nameKey]) 
+        ? req.body[nameKey] 
+        : [req.body[nameKey]];
+    }
+    
+    if (req.body[nameIvKey]) {
+      fileNameIvs = Array.isArray(req.body[nameIvKey]) 
+        ? req.body[nameIvKey] 
+        : [req.body[nameIvKey]];
+    }
+
+    if (!code) {
+      return res.status(400).json({ error: 'Code is required' });
+    }
+
+    // Normalize code to uppercase
+    code = code.toUpperCase();
+
+    const conn = connManager.getConnection(code);
+    if (!conn) {
+      return res.status(404).json({ error: 'Connection not found' });
+    }
+
+    let messageData = {
+      type: messageType || 'text',
+      timestamp: Date.now()
+    };
+
+    if (messageType === 'text') {
+      // Store encrypted text message
+      messageData = {
+        ...messageData,
+        ciphertext,
+        iv,
+        authTag,
+        hash,
+        text: text || ''
+      };
+    } else if (messageType === 'files') {
+      // Handle encrypted file uploads
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ error: 'No files provided' });
+      }
+
+      const encryptedFiles = [];
+
+      for (let i = 0; i < req.files.length; i++) {
+        const file = req.files[i];
+        const filename = file.filename;
+        const iv = fileIvs[i] || '';
+        const hash = fileHashes[i] || '';
+        const encryptedName = fileNames[i] || '';
+        const nameIv = fileNameIvs[i] || '';
+
+        // Track the file for cleanup
+        uploadedFiles.set(filename, Date.now());
+
+        encryptedFiles.push({
+          filename,
+          size: file.size,
+          iv: iv,
+          hash: hash,
+          encryptedName: encryptedName,
+          nameIv: nameIv
+        });
+      }
+
+      messageData = {
+        ...messageData,
+        files: encryptedFiles
+      };
+    }
+
+    // Store the message from main
+    connManager.storeMessage(code, 'main', messageData);
+    
+    // Calculate total size for logging
+    let totalSize = 0;
+    if (messageType === 'text' && ciphertext) {
+      totalSize += Math.ceil(ciphertext.length / 2);
+    }
+    if (messageType === 'files' && req.files) {
+      req.files.forEach(file => {
+        totalSize += file.size;
+      });
+    }
+    
+    // Log the event with formatted file size
+    const action = messageType === 'files' ? 'sent file(s) [MAIN]' : 'sent message [MAIN]';
+    const details = messageType === 'files' ? `(${req.files.length} files) size: ${formatBytes(totalSize)}` : `size: ${formatBytes(totalSize)}`;
+    logEvent(clientIp, action, details);
+    
+    // Notify connector via WebSocket that a new message is available from main
+    notifySessionRole(code, 'sender', {
+      type: 'message-available',
+      messageId: messageData.timestamp,
+      messageType: messageData.type,
+      sender: 'main'
+    });
+
+    res.json({
+      success: true,
+      messageId: messageData.timestamp
+    });
+  } catch (error) {
+    console.error('Error sending message from main:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -654,6 +799,31 @@ app.get('/api/message/retrieve/:code', (req, res) => {
     });
   } catch (error) {
     console.error('Error retrieving messages:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * API: Retrieve encrypted messages for a connection (connector retrieves main's messages)
+ */
+app.get('/api/message/retrieve-for-connector/:code', (req, res) => {
+  try {
+    let { code } = req.params;
+
+    // Normalize code to uppercase
+    code = code.toUpperCase();
+
+    const conn = connManager.getConnection(code);
+    if (!conn) {
+      return res.status(404).json({ error: 'Connection not found' });
+    }
+
+    const messages = connManager.getMessagesFromMain(code);
+    res.json({
+      messages
+    });
+  } catch (error) {
+    console.error('Error retrieving messages for connector:', error);
     res.status(500).json({ error: error.message });
   }
 });

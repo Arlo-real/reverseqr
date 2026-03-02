@@ -105,6 +105,11 @@ let connectionCode = null;
         if (qrSection) {
           qrSection.style.display = 'none';
         }
+        // Show the send section
+        const sendSection = document.getElementById('sendSection');
+        if (sendSection) {
+          sendSection.style.display = 'block';
+        }
       } catch (hashError) {
         console.error('Error displaying key hash:', hashError);
       }
@@ -527,6 +532,96 @@ let connectionCode = null;
       }
     }
 
+    async function sendMessage() {
+      try {
+        if (!connectionCode) {
+          showError('Not connected to connector');
+          return;
+        }
+
+        // Verify key exchange was completed successfully
+        if (!encryptionKey) {
+          showError('Secure connection not established. Key exchange may have failed. Please reconnect.');
+          return;
+        }
+
+        const text = document.getElementById('mainTextInput').value;
+        if (!text.trim()) {
+          showError('Please enter a message');
+          return;
+        }
+
+        const sendBtn = document.getElementById('mainSendBtn');
+        sendBtn.disabled = true;
+        sendBtn.innerHTML = '<span class="spinner"></span><span class="spinner"></span><span class="spinner"></span> Sending...';
+
+        // Send text message
+        const textFormData = new FormData();
+        textFormData.append('code', connectionCode);
+        textFormData.append('messageType', 'text');
+        
+        // Encrypt the text using AES-256-GCM
+        const encoder = new TextEncoder();
+        const textData = encoder.encode(text);
+        
+        // Import the encryptionKey for use with Web Crypto API
+        const key = await crypto.subtle.importKey(
+          'raw',
+          encryptionKey,
+          { name: 'AES-GCM' },
+          false,
+          ['encrypt']
+        );
+        
+        const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV is optimal for AES-GCM per NIST
+        const ivHex = arrayToHex(iv);
+        const encrypted = await crypto.subtle.encrypt(
+          {
+            name: 'AES-GCM',
+            iv: iv
+          },
+          key,
+          textData
+        );
+        
+        const ciphertextHex = arrayToHex(new Uint8Array(encrypted));
+        
+        textFormData.append('ciphertext', ciphertextHex);
+        textFormData.append('iv', ivHex);
+        textFormData.append('authTag', '');
+        
+        const response = await fetch('/api/message/send/main', {
+          method: 'POST',
+          body: textFormData
+        });
+
+        if (response.status === 429) {
+          await showRateLimitError();
+          return;
+        }
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Send failed');
+        }
+
+        showSuccess('Message sent securely!');
+        document.getElementById('mainTextInput').value = '';
+
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = 'Send Message';
+      } catch (error) {
+        showError('Send failed: ' + error.message);
+        document.getElementById('mainSendBtn').disabled = false;
+        document.getElementById('mainSendBtn').innerHTML = 'Send Message';
+        console.error(error);
+      }
+    }
+
+    function arrayToHex(arr) {
+      return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
     function copyCode() {
       const codeElement = document.getElementById('pgpCode');
       const text = codeElement.textContent;
@@ -545,6 +640,17 @@ let connectionCode = null;
       const errorDiv = document.getElementById('error');
       errorDiv.textContent = message;
       errorDiv.style.display = 'block';
+    }
+
+    function showSuccess(message) {
+      const errorDiv = document.getElementById('error');
+      errorDiv.textContent = message;
+      errorDiv.style.display = 'block';
+      errorDiv.style.color = 'var(--success-color, #10b981)';
+      setTimeout(() => {
+        errorDiv.style.display = 'none';
+        errorDiv.style.color = '';
+      }, 3000);
     }
 
     async function showRateLimitError() {
@@ -610,6 +716,12 @@ let connectionCode = null;
       const copyCodeBtn = document.getElementById('copyCodeBtn');
       if (copyCodeBtn) {
         copyCodeBtn.addEventListener('click', copyCode);
+      }
+
+      // Set up send button event listener
+      const mainSendBtn = document.getElementById('mainSendBtn');
+      if (mainSendBtn) {
+        mainSendBtn.addEventListener('click', sendMessage);
       }
     });
 

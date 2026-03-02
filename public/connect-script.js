@@ -393,6 +393,9 @@ function setupWebSocket() {
           receiverKeyResolver = null;
           dhKeyPairPending = null;
         }
+      } else if (data.type === 'message-available' && data.sender === 'main') {
+        // New message from main available, fetch it
+        await fetchAndDisplayMessagesFromMain();
       }
     } catch (error) {
       console.error('WebSocket message error:', error);
@@ -575,6 +578,8 @@ async function connectToMain() {
     if (textInput) {
       textInput.focus();
     }
+    // Check for any messages from main that may have been queued
+    await fetchAndDisplayMessagesFromMain();
     setTimeout(() => {
       status.style.display = 'none';
     }, 3000);
@@ -879,6 +884,120 @@ function displaySentMessages() {
     
     messagesList.appendChild(msgDiv);
   });
+}
+
+let displayedMainMessageIds = new Set();
+
+// Fetch and display messages from main
+async function fetchAndDisplayMessagesFromMain() {
+  if (!encryptionKey) {
+    console.warn('Cannot fetch messages from main: encryption key not established yet');
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/message/retrieve-for-connector/${connectionCode}`);
+    
+    if (response.status === 429) {
+      await showRateLimitError();
+      return;
+    }
+    
+    const data = await response.json();
+
+    if (data.messages && data.messages.length > 0) {
+      console.log('Messages from main received:', data.messages);
+      
+      // Filter out already displayed messages
+      const newMessages = data.messages.filter(msg => {
+        const msgId = msg.timestamp || msg.data?.timestamp;
+        return msgId && !displayedMainMessageIds.has(msgId);
+      });
+      
+      if (newMessages.length > 0) {
+        // Track these message IDs as displayed
+        newMessages.forEach(msg => {
+          const msgId = msg.timestamp || msg.data?.timestamp;
+          if (msgId) displayedMainMessageIds.add(msgId);
+        });
+        displayMessagesFromMain(newMessages);
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching messages from main:', error);
+  }
+}
+
+// Display messages received from main
+async function displayMessagesFromMain(messages) {
+  const receivedMessagesDiv = document.getElementById('receivedMessagesSection');
+  let messagesList;
+  
+  // Create section if it doesn't exist
+  if (!receivedMessagesDiv) {
+    const newSection = document.createElement('div');
+    newSection.id = 'receivedMessagesSection';
+    newSection.className = 'received-messages-section';
+    newSection.innerHTML = '<div class="received-messages-title">Messages from Main</div><div id="receivedMessagesList"></div>';
+    document.getElementById('messageSection').insertBefore(newSection, document.getElementById('messagesList'));
+    messagesList = document.getElementById('receivedMessagesList');
+  } else {
+    messagesList = document.getElementById('receivedMessagesList');
+  }
+
+  for (const msgWrapper of messages) {
+    // Handle both direct msg.type and msg.data.type formats
+    const msg = msgWrapper.data || msgWrapper;
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'received-message';
+
+    if (msg.type === 'text') {
+      // Decrypt the text message
+      let decrypted = '';
+      
+      if (msg.ciphertext && msg.iv && encryptionKey) {
+        decrypted = await decryptText(msg.ciphertext, msg.iv, encryptionKey);
+      } else if (msg.text) {
+        // Fallback to plain text if no encryption
+        decrypted = msg.text;
+      } else {
+        decrypted = '[Unable to decrypt message]';
+      }
+
+      msgDiv.innerHTML = `
+        <div class="message-type">Text from Main</div>
+        <div class="message-text">${escapeHtml(decrypted).replace(/\n/g, '<br>')}</div>
+      `;
+    } else if (msg.type === 'files') {
+      let filesHtml = '';
+      if (msg.files && msg.files.length > 0) {
+        filesHtml = await Promise.all(msg.files.map(async (f) => {
+          let displayName = f.originalName;
+          // Decrypt the file name if encrypted
+          if (f.encryptedName && f.nameIv && encryptionKey) {
+            displayName = await decryptText(f.encryptedName, f.nameIv, encryptionKey);
+          }
+          return `
+            <div class="file-item-container">
+              <a href="#" class="file-item file-download-link" data-filename="${f.filename}" data-name="${displayName}" data-iv="${f.iv || ''}" data-size="${f.size || 0}" style="cursor: pointer;">${escapeHtml(displayName)}</a>
+            </div>
+          `;
+        })).then(results => results.join(''));
+      } else {
+        filesHtml = '<p style="color: #999;">No files</p>';
+      }
+      
+      msgDiv.innerHTML = `
+        <div class="message-type">Files from Main</div>
+        <div class="message-files">
+          ${filesHtml}
+        </div>
+      `;
+    }
+
+    // Insert at the beginning to show newest messages first
+    messagesList.insertBefore(msgDiv, messagesList.firstChild);
+  }
 }
 
 function stringToHex(str) {

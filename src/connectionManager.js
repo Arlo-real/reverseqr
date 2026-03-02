@@ -39,7 +39,8 @@ class ConnectionManager {
       responderDhPublicKey: null,
       mainToken,  // Token for main WebSocket auth
       senderToken: null,  // Token for connector WebSocket auth (set on join)
-      messages: [],
+      mainMessages: [],  // Messages sent by main
+      connectorMessages: [],  // Messages sent by connector
       createdAt: Date.now(),
       expiresAt: Date.now() + this.sessionTimeout,
       status: 'waiting' // 'waiting', 'established', 'complete'
@@ -109,26 +110,48 @@ class ConnectionManager {
   /**
    * Store encrypted message
    * @param {string} code - Connection code
+   * @param {string} sender - 'main' or 'connector'
    * @param {Object} messageData - Encrypted message with metadata
    */
-  storeMessage(code, messageData) {
+  storeMessage(code, sender, messageData) {
     const conn = this.getConnection(code);
     if (!conn) throw new Error('Connection not found');
-    conn.messages.push({
-      data: messageData,
-      timestamp: Date.now()
-    });
+    
+    if (sender === 'main') {
+      conn.mainMessages.push({
+        data: messageData,
+        timestamp: Date.now()
+      });
+    } else if (sender === 'connector') {
+      conn.connectorMessages.push({
+        data: messageData,
+        timestamp: Date.now()
+      });
+    } else {
+      throw new Error('Invalid sender: must be "main" or "connector"');
+    }
   }
 
   /**
-   * Get all messages for a connection
+   * Get all messages for a connection (from connector to main)
    * @param {string} code - Connection code
-   * @returns {Array} Array of messages
+   * @returns {Array} Array of messages from connector
    */
   getMessages(code) {
     const conn = this.getConnection(code);
     if (!conn) throw new Error('Connection not found');
-    return conn.messages;
+    return conn.connectorMessages;
+  }
+
+  /**
+   * Get all messages from main for connector
+   * @param {string} code - Connection code
+   * @returns {Array} Array of messages from main
+   */
+  getMessagesFromMain(code) {
+    const conn = this.getConnection(code);
+    if (!conn) throw new Error('Connection not found');
+    return conn.mainMessages;
   }
 
   /**
