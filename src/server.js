@@ -419,6 +419,7 @@ app.post('/api/session/join', (req, res) => {
   try {
     let { code, responderDhPublicKey } = req.body;
     const clientIp = req.ip;
+    console.log('[SERVER] /api/session/join called with code:', code);
 
     if (!code) {
       return res.status(400).json({ error: 'Code is required' });
@@ -426,9 +427,11 @@ app.post('/api/session/join', (req, res) => {
 
     // Normalize code to uppercase for consistency
     code = code.toUpperCase();
+    console.log('[SERVER] After uppercase normalization, code is:', code);
 
     const conn = connManager.getConnection(code);
     if (!conn) {
+      console.log('[SERVER] Connection not found for code:', code);
       return res.status(404).json({ error: 'Connection not found' });
     }
 
@@ -457,6 +460,7 @@ app.post('/api/session/join', (req, res) => {
       });
     }
 
+    console.log('[SERVER] Returning successful join response with code:', code);
     res.json({
       success: true,
       initiatorPublicKey: conn.initiatorDhPublicKey,

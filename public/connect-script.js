@@ -502,6 +502,7 @@ async function connectToMain() {
   try {
     showError('');
     let code = document.getElementById('codeInput').value.trim();
+    console.log('[CONNECTOR] connectToMain called with code input:', code);
     if (!code) {
       showError('Please enter a connection code');
       return;
@@ -516,6 +517,7 @@ async function connectToMain() {
     // Decode PGP words if needed
     try {
       code = await decodePgpIfNeeded(code);
+      console.log('[CONNECTOR] After PGP decode, code is now:', code);
     } catch (e) {
       showError(e.message);
       if (connectBtn) {
@@ -535,6 +537,7 @@ async function connectToMain() {
     console.log('Connector: Generated DH key pair');
 
     // Join the session and send our public key
+    console.log('[CONNECTOR] Calling /api/session/join with code:', code, 'responderDhPublicKey present:', !!ourPublicKeyHex);
     const response = await fetch('/api/session/join', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -556,8 +559,10 @@ async function connectToMain() {
     }
 
     const data = await response.json();
+    console.log('[CONNECTOR] Response from /api/session/join:', data);
     connectionCode = data.code;
     wsToken = data.wsToken;  // Store WebSocket auth token
+    console.log('[CONNECTOR] Set connectionCode to:', connectionCode, 'and wsToken');
 
     // If main's public key is not immediately available, wait via WebSocket
     if (!data.initiatorPublicKey) {
