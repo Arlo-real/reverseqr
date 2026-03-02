@@ -217,11 +217,16 @@ function notifySessionRole(code, role, message) {
   const clients = wsConnections.get(code);
   if (clients) {
     const messageStr = JSON.stringify(message);
+    let notified = 0;
     clients.forEach((ws) => {
       if (ws.readyState === WebSocket.OPEN && ws.role === role) {
         ws.send(messageStr);
+        notified++;
       }
     });
+    console.log(`notifySessionRole: code=${code}, role=${role}, clients=${clients.size}, notified=${notified}`);
+  } else {
+    console.log(`notifySessionRole: code=${code}, role=${role}, no clients connected`);
   }
 }
 
@@ -1070,11 +1075,14 @@ wss.on('connection', (ws, req) => {
       
       // Handle subscription to a session
       if (data.type === 'subscribe') {
-        const { code, role, token } = data;
+        let { code, role, token } = data;
         if (!code) {
           ws.send(JSON.stringify({ type: 'error', message: 'No session code provided' }));
           return;
         }
+
+        // Normalize code to uppercase for consistency
+        code = code.toUpperCase();
 
         // Validate the authentication token
         if (!token || !connManager.validateToken(code, role, token)) {

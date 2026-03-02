@@ -72,6 +72,18 @@ h1 {
   border-left: 4px solid var(--danger);
 }
 
+.success {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  display: none;
+  animation: slideDown 0.3s ease;
+  background: #d1fae5;
+  color: #065f46;
+  border-left: 4px solid #10b981;
+}
+
 @keyframes slideDown {
   from {
     opacity: 0;

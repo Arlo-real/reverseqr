@@ -395,7 +395,11 @@ function setupWebSocket() {
         }
       } else if (data.type === 'message-available' && data.sender === 'main') {
         // New message from main available, fetch it
+        console.log('Fetching messages from main...');
         await fetchAndDisplayMessagesFromMain();
+      } else if (data.type === 'message-available') {
+        // Fallback for backward compatibility
+        console.log('Message available notification (type not specified):', data);
       }
     } catch (error) {
       console.error('WebSocket message error:', error);

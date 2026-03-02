@@ -601,8 +601,19 @@ let connectionCode = null;
         }
 
         if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Send failed');
+          let errorMsg = 'Send failed';
+          try {
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+              const error = await response.json();
+              errorMsg = error.error || errorMsg;
+            } else {
+              errorMsg = `Server error: ${response.status} ${response.statusText}`;
+            }
+          } catch (parseError) {
+            errorMsg = `Server error: ${response.status} ${response.statusText}`;
+          }
+          throw new Error(errorMsg);
         }
 
         showSuccess('Message sent securely!');
@@ -612,9 +623,9 @@ let connectionCode = null;
         sendBtn.innerHTML = 'Send Message';
       } catch (error) {
         showError('Send failed: ' + error.message);
+        console.error('Send error details:', error);
         document.getElementById('mainSendBtn').disabled = false;
         document.getElementById('mainSendBtn').innerHTML = 'Send Message';
-        console.error(error);
       }
     }
 
@@ -643,13 +654,21 @@ let connectionCode = null;
     }
 
     function showSuccess(message) {
-      const errorDiv = document.getElementById('error');
-      errorDiv.textContent = message;
-      errorDiv.style.display = 'block';
-      errorDiv.style.color = 'var(--success-color, #10b981)';
+      // Create success div if it doesn't exist
+      let successDiv = document.getElementById('success');
+      if (!successDiv) {
+        successDiv = document.createElement('div');
+        successDiv.id = 'success';
+        successDiv.className = 'success';
+        const errorDiv = document.getElementById('error');
+        if (errorDiv && errorDiv.parentNode) {
+          errorDiv.parentNode.insertBefore(successDiv, errorDiv.nextSibling);
+        }
+      }
+      successDiv.textContent = message;
+      successDiv.style.display = 'block';
       setTimeout(() => {
-        errorDiv.style.display = 'none';
-        errorDiv.style.color = '';
+        successDiv.style.display = 'none';
       }, 3000);
     }
 
