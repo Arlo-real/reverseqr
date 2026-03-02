@@ -880,32 +880,29 @@ async function sendMessage() {
 
 function displaySentMessages() {
   const messagesList = document.getElementById('messagesList');
-  if (sentMessages.length === 0) {
-    messagesList.innerHTML = '';
-    return;
-  }
   
-  messagesList.innerHTML = '<div class="sent-messages-title">Sent Messages</div>';
+  // Only initialize title if messages list is empty
+  if (messagesList.children.length === 0) {
+    messagesList.innerHTML = '<div class="messages-title">Conversation</div>';
+  }
   
   // Display messages in reverse order (newest first)
   [...sentMessages].reverse().forEach((msg, idx) => {
     const msgDiv = document.createElement('div');
-    msgDiv.className = 'sent-message';
+    msgDiv.className = 'message received-message';
     
     if (msg.type === 'text' && msg.text) {
       msgDiv.innerHTML = `
-        <div class="message-type">Text</div>
-        <div class="message-content">${escapeHtml(msg.text).replace(/\n/g, '<br>')}</div>
+        <div class="message-text">${escapeHtml(msg.text).replace(/\n/g, '<br>')}</div>
       `;
     } else if (msg.files && msg.files.length > 0) {
       const filesHtml = msg.files.map(f => `
-        <div class="sent-file">
-          <div>${escapeHtml(f.name)} <span class="file-size">(${formatFileSize(f.size)})</span></div>
+        <div class="file-item-container">
+          <span class="file-item">${escapeHtml(f.name)} <span class="file-size">(${formatFileSize(f.size)})</span></span>
         </div>
       `).join('');
       msgDiv.innerHTML = `
-        <div class="message-type">Files</div>
-        <div class="sent-files">${filesHtml}</div>
+        <div class="message-files">${filesHtml}</div>
       `;
     }
     
@@ -1002,26 +999,18 @@ function hexToArray(hex) {
 }
 
 async function displayMessagesFromMain(messages) {
-  const receivedMessagesDiv = document.getElementById('receivedMessagesSection');
-  let messagesList;
+  const messagesList = document.getElementById('messagesList');
   
-  // Create section if it doesn't exist
-  if (!receivedMessagesDiv) {
-    const newSection = document.createElement('div');
-    newSection.id = 'receivedMessagesSection';
-    newSection.className = 'received-messages-section';
-    newSection.innerHTML = '<div class="received-messages-title">Messages from Main</div><div id="receivedMessagesList"></div>';
-    document.getElementById('messageSection').insertBefore(newSection, document.getElementById('messagesList'));
-    messagesList = document.getElementById('receivedMessagesList');
-  } else {
-    messagesList = document.getElementById('receivedMessagesList');
+  // Initialize with title if empty
+  if (messagesList.children.length === 0) {
+    messagesList.innerHTML = '<div class="messages-title">Conversation</div>';
   }
 
   for (const msgWrapper of messages) {
     // Handle both direct msg.type and msg.data.type formats
     const msg = msgWrapper.data || msgWrapper;
     const msgDiv = document.createElement('div');
-    msgDiv.className = 'received-message';
+    msgDiv.className = 'message received-message';
 
     if (msg.type === 'text') {
       // Decrypt the text message
@@ -1037,7 +1026,6 @@ async function displayMessagesFromMain(messages) {
       }
 
       msgDiv.innerHTML = `
-        <div class="message-type">Text from Main</div>
         <div class="message-text">${escapeHtml(decrypted).replace(/\n/g, '<br>')}</div>
       `;
     } else if (msg.type === 'files') {
@@ -1060,7 +1048,6 @@ async function displayMessagesFromMain(messages) {
       }
       
       msgDiv.innerHTML = `
-        <div class="message-type">Files from Main</div>
         <div class="message-files">
           ${filesHtml}
         </div>
@@ -1068,7 +1055,7 @@ async function displayMessagesFromMain(messages) {
     }
 
     // Insert at the beginning to show newest messages first
-    messagesList.insertBefore(msgDiv, messagesList.firstChild);
+    messagesList.insertBefore(msgDiv, messagesList.querySelector('.messages-title').nextSibling);
   }
 }
 

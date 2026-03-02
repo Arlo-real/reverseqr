@@ -339,7 +339,6 @@ textarea:focus {
   margin-top: 30px;
 }
 
-.sent-messages-title,
 .messages-title {
   font-size: 14px;
   font-weight: 700;
@@ -349,7 +348,8 @@ textarea:focus {
   letter-spacing: 0.5px;
 }
 
-.sent-message {
+.message,
+.received-message {
   background: var(--bg-light);
   border-left: 4px solid var(--success);
   padding: 16px;
@@ -380,12 +380,10 @@ textarea:focus {
   line-height: 1.5;
 }
 
-.sent-files,
 .message-files {
   margin-top: 8px;
 }
 
-.sent-file,
 .file-item-container {
   background: white;
   padding: 10px;

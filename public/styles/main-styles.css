@@ -275,7 +275,8 @@ h1 {
 }
 
 /* Message Item */
-.message {
+.message,
+.received-message {
   background: var(--bg-light);
   border-left: 4px solid var(--success);
   padding: 16px;

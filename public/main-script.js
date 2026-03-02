@@ -275,14 +275,14 @@ let connectionCode = null;
 
       // Only clear on first display (when messagesList is empty)
       if (messagesList.children.length === 0) {
-        messagesList.innerHTML = '';
+        messagesList.innerHTML = '<div class="messages-title">Conversation</div>';
       }
 
       for (const msgWrapper of messages) {
         // Handle both direct msg.type and msg.data.type formats
         const msg = msgWrapper.data || msgWrapper;
         const msgDiv = document.createElement('div');
-        msgDiv.className = 'message';
+        msgDiv.className = 'message received-message';
 
         if (msg.type === 'text') {
           // Decrypt the text message - must have ciphertext
