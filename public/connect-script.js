@@ -363,22 +363,25 @@ function setupWebSocket() {
     console.log('WebSocket connected');
     // Subscribe to session as connector with auth token
     if (connectionCode && wsToken) {
-      ws.send(JSON.stringify({
+      const subscribeMsg = {
         type: 'subscribe',
         code: connectionCode,
         role: 'sender',
         token: wsToken
-      }));
+      };
+      console.log('[CONNECTOR WS] Subscribing with:', subscribeMsg);
+      ws.send(JSON.stringify(subscribeMsg));
     }
   };
   
   ws.onmessage = async (event) => {
     try {
       const data = JSON.parse(event.data);
-      console.log('WebSocket message:', data);
+      console.log('[CONNECTOR WS] onmessage received:', data);
       
       if (data.type === 'receiver-key-available' && data.initiatorPublicKey) {
         // Receiver's public key is now available
+        console.log('[CONNECTOR WS] Receiver key available');
         if (dhKeyPairPending && receiverKeyResolver) {
           await completeKeyExchange(dhKeyPairPending, data.initiatorPublicKey);
           receiverKeyResolver();
@@ -387,6 +390,7 @@ function setupWebSocket() {
         }
       } else if (data.type === 'keys-available' && data.initiatorPublicKey) {
         // Keys were already available when we subscribed
+        console.log('[CONNECTOR WS] Keys available');
         if (dhKeyPairPending && receiverKeyResolver) {
           await completeKeyExchange(dhKeyPairPending, data.initiatorPublicKey);
           receiverKeyResolver();
@@ -395,11 +399,11 @@ function setupWebSocket() {
         }
       } else if (data.type === 'message-available' && data.sender === 'main') {
         // New message from main available, fetch it
-        console.log('Fetching messages from main...');
+        console.log('[CONNECTOR WS] Message available from main, fetching...');
         await fetchAndDisplayMessagesFromMain();
       } else if (data.type === 'message-available') {
         // Fallback for backward compatibility
-        console.log('Message available notification (type not specified):', data);
+        console.log('[CONNECTOR WS] Message available notification (no sender specified):', data);
       }
     } catch (error) {
       console.error('WebSocket message error:', error);
@@ -894,13 +898,16 @@ let displayedMainMessageIds = new Set();
 
 // Fetch and display messages from main
 async function fetchAndDisplayMessagesFromMain() {
+  console.log('[CONNECTOR] fetchAndDisplayMessagesFromMain() called');
   if (!encryptionKey) {
     console.warn('Cannot fetch messages from main: encryption key not established yet');
     return;
   }
 
   try {
+    console.log('[CONNECTOR] Fetching from /api/message/retrieve-for-connector/', connectionCode);
     const response = await fetch(`/api/message/retrieve-for-connector/${connectionCode}`);
+    console.log('[CONNECTOR] Response status:', response.status);
     
     if (response.status === 429) {
       await showRateLimitError();
@@ -908,6 +915,7 @@ async function fetchAndDisplayMessagesFromMain() {
     }
     
     const data = await response.json();
+    console.log('[CONNECTOR] Data received:', data);
 
     if (data.messages && data.messages.length > 0) {
       console.log('Messages from main received:', data.messages);

@@ -214,19 +214,23 @@ function broadcastToSession(code, message) {
 
 // Helper to notify specific role in a session
 function notifySessionRole(code, role, message) {
+  console.log('[SERVER] notifySessionRole called: code=', code, 'role=', role);
+  console.log('[SERVER] Current wsConnections keys:', Array.from(wsConnections.keys()));
   const clients = wsConnections.get(code);
   if (clients) {
     const messageStr = JSON.stringify(message);
     let notified = 0;
+    console.log('[SERVER] Found', clients.size, 'clients for code', code);
     clients.forEach((ws) => {
+      console.log('[SERVER] Client role=', ws.role, 'readyState=', ws.readyState, 'WebSocket.OPEN=', WebSocket.OPEN);
       if (ws.readyState === WebSocket.OPEN && ws.role === role) {
         ws.send(messageStr);
         notified++;
       }
     });
-    console.log(`notifySessionRole: code=${code}, role=${role}, clients=${clients.size}, notified=${notified}`);
+    console.log(`[SERVER] notifySessionRole: code=${code}, role=${role}, clients=${clients.size}, notified=${notified}`);
   } else {
-    console.log(`notifySessionRole: code=${code}, role=${role}, no clients connected`);
+    console.log(`[SERVER] notifySessionRole: code=${code}, role=${role}, no clients connected`);
   }
 }
 
@@ -647,6 +651,7 @@ app.post('/api/message/send/main', uploadLimiter, checkStorageMiddleware, upload
   try {
     let { code, messageType, ciphertext, iv, authTag, hash, text } = req.body;
     const clientIp = req.ip;
+    console.log('[SERVER] /api/message/send/main called with code:', code, 'messageType:', messageType);
     
     // Handle file IVs and hashes from FormData
     let fileIvs = [];
@@ -747,7 +752,9 @@ app.post('/api/message/send/main', uploadLimiter, checkStorageMiddleware, upload
     }
 
     // Store the message from main
+    console.log('[SERVER] Storing message from main for code:', code);
     connManager.storeMessage(code, 'main', messageData);
+    console.log('[SERVER] Message stored, notifying connector');
     
     // Calculate total size for logging
     let totalSize = 0;
@@ -766,6 +773,7 @@ app.post('/api/message/send/main', uploadLimiter, checkStorageMiddleware, upload
     logEvent(clientIp, action, details);
     
     // Notify connector via WebSocket that a new message is available from main
+    console.log('[SERVER] Calling notifySessionRole for code:', code, 'role: sender');
     notifySessionRole(code, 'sender', {
       type: 'message-available',
       messageId: messageData.timestamp,
@@ -1083,13 +1091,15 @@ wss.on('connection', (ws, req) => {
 
         // Normalize code to uppercase for consistency
         code = code.toUpperCase();
+        console.log('[SERVER WS] Subscribe request: code=', code, 'role=', role);
 
         // Validate the authentication token
         if (!token || !connManager.validateToken(code, role, token)) {
           ws.send(JSON.stringify({ type: 'error', message: 'Invalid or missing authentication token' }));
-          console.log(`WebSocket: Rejected unauthorized ${role || 'unknown'} subscription to session ${code}`);
+          console.log(`[SERVER WS] Rejected unauthorized ${role || 'unknown'} subscription to session ${code}`);
           return;
         }
+        console.log('[SERVER WS] Subscription accepted for role ', role, ' on code ', code);
         
         // Store the session code and role on the websocket
         ws.sessionCode = code;

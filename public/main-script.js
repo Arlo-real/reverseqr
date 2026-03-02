@@ -24,12 +24,14 @@ let connectionCode = null;
         console.log('WebSocket connected');
         // Subscribe to session as main with auth token
         if (connectionCode && wsToken) {
-          ws.send(JSON.stringify({
+          const subscribeMsg = {
             type: 'subscribe',
             code: connectionCode,
             role: 'main',
             token: wsToken
-          }));
+          };
+          console.log('[MAIN WS] Subscribing with:', subscribeMsg);
+          ws.send(JSON.stringify(subscribeMsg));
           
           // After reconnecting, check for any messages that may have been queued
           // while the connection was down
@@ -534,18 +536,22 @@ let connectionCode = null;
 
     async function sendMessage() {
       try {
+        console.log('[MAIN] sendMessage() called');
         if (!connectionCode) {
           showError('Not connected to connector');
+          console.log('[MAIN] No connectionCode');
           return;
         }
 
         // Verify key exchange was completed successfully
         if (!encryptionKey) {
           showError('Secure connection not established. Key exchange may have failed. Please reconnect.');
+          console.log('[MAIN] No encryptionKey');
           return;
         }
 
         const text = document.getElementById('mainTextInput').value;
+        console.log('[MAIN] Text to send:', text.substring(0, 50));
         if (!text.trim()) {
           showError('Please enter a message');
           return;
@@ -590,10 +596,12 @@ let connectionCode = null;
         textFormData.append('iv', ivHex);
         textFormData.append('authTag', '');
         
+        console.log('[MAIN] Sending to /api/message/send/main with code:', connectionCode);
         const response = await fetch('/api/message/send/main', {
           method: 'POST',
           body: textFormData
         });
+        console.log('[MAIN] Response status:', response.status);
 
         if (response.status === 429) {
           await showRateLimitError();
