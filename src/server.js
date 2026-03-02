@@ -939,6 +939,7 @@ app.get('/api/config', (req, res) => {
   res.json({
     maxFileSize: MAX_FILE_SIZE_BYTES,
     maxFileSizeFormatted: formatBytes(MAX_FILE_SIZE_BYTES),
+    bodySize: bodyLimitBytes,
     bodyLimit: BODY_SIZE_LIMIT,
     bodyLimitFormatted: formatBytes(bodyLimitBytes),
     sessionTimeout: SESSION_TIMEOUT_MS,

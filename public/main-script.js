@@ -14,6 +14,23 @@ let connectionCode = null;
     let wsToken = null;  // WebSocket authentication token
     let selectedFiles = []; // Will store: {name, size, file}
     let displayedMessageIds = new Set(); // Track which messages have been displayed
+    let maxFileSize = 8 * 1024 * 1024; // Default 8MB per file, will be updated from server
+    let maxTotalSize = 30 * 1024 * 1024; // Max total request size (conservative: 30MB of 50MB limit)
+
+    // Fetch max file size from server config on page load
+    async function fetchMaxFileSize() {
+      try {
+        const response = await fetch('/api/config');
+        const config = await response.json();
+        if (config.maxFileSize) {
+          maxFileSize = config.maxFileSize;
+          // Adjust maxTotalSize to be 90% of body limit for safety
+          maxTotalSize = Math.floor(config.bodySize * 0.9);
+        }
+      } catch (error) {
+        console.warn('Could not fetch max file size from config:', error);
+      }
+    }
 
     // Set up WebSocket connection
     function setupWebSocket() {
@@ -829,13 +846,30 @@ let connectionCode = null;
     function handleFileSelect(files) {
       for (let file of files) {
         // Check for duplicates
-        if (!selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
-          selectedFiles.push({
-            name: file.name,
-            size: file.size,
-            file: file
-          });
+        if (selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
+          continue;
         }
+        
+        // Validate individual file size (accounting for hex encoding ~2x and form overhead)
+        const encryptedSize = file.size * 2.2; // Hex encoding + overhead
+        if (encryptedSize > maxFileSize) {
+          showError(`File "${file.name}" is too large (${formatFileSize(file.size)} → ${formatFileSize(encryptedSize)} when encrypted). Maximum is ${formatFileSize(maxFileSize)}.`);
+          continue;
+        }
+        
+        // Calculate total encrypted request size with new file
+        const currentTotalEncrypted = selectedFiles.reduce((sum, f) => sum + (f.size * 2.2), 0);
+        const newFileTotalEncrypted = currentTotalEncrypted + encryptedSize;
+        if (newFileTotalEncrypted > maxTotalSize) {
+          showError(`Adding "${file.name}" would exceed total upload limit. Current: ${formatFileSize(newFileTotalEncrypted)}, Max: ${formatFileSize(maxTotalSize)}`);
+          continue;
+        }
+        
+        selectedFiles.push({
+          name: file.name,
+          size: file.size,
+          file: file
+        });
       }
       renderFilesList();
     }
@@ -906,6 +940,7 @@ let connectionCode = null;
     window.addEventListener('DOMContentLoaded', () => {
       initializeMain();
       setupDragAndDrop();
+      fetchMaxFileSize();
       
       // Set up copy code button event listener
       const copyCodeBtn = document.getElementById('copyCodeBtn');
