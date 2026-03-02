@@ -13,6 +13,8 @@ let connectionCode = null;
     let ws = null;  // WebSocket connection
     let wsToken = null;  // WebSocket authentication token
     let selectedFiles = []; // Will store: {name, size, file}
+    let sentMessages = []; // Track sent messages for history
+    let lastDisplayedSentMessageIndex = -1; // Track which sent messages have been displayed
     let displayedMessageIds = new Set(); // Track which messages have been displayed
     let maxFileSize = 8 * 1024 * 1024; // Default 8MB per file, will be updated from server
     let maxTotalSize = 30 * 1024 * 1024; // Max total request size (conservative: 30MB of 50MB limit)
@@ -723,6 +725,31 @@ let connectionCode = null;
         }
 
         showSuccess('Message sent securely!');
+        
+        // Track sent messages for history
+        if (text.trim()) {
+          sentMessages.push({
+            type: 'text',
+            text: text,
+            files: [],
+            timestamp: Date.now()
+          });
+        }
+        
+        if (selectedFiles.length > 0) {
+          sentMessages.push({
+            type: 'files',
+            text: '',
+            files: selectedFiles.map(f => ({
+              name: f.name,
+              size: f.size
+            })),
+            timestamp: Date.now()
+          });
+        }
+        
+        displaySentMessages();
+        
         document.getElementById('mainTextInput').value = '';
         
         // Clear file contents from memory to free RAM
@@ -895,6 +922,42 @@ let connectionCode = null;
       const sizes = ['Bytes', 'KB', 'MB', 'GB'];
       const i = Math.floor(Math.log(bytes) / Math.log(k));
       return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    function displaySentMessages() {
+      const messagesSection = document.getElementById('messagesSection');
+      const messagesList = document.getElementById('messagesList');
+      
+      // Show messages section if it has messages
+      if (messagesSection && messagesList && (messagesList.children.length > 0 || sentMessages.length > 0)) {
+        messagesSection.style.display = 'block';
+      }
+      
+      // Only display NEW messages that haven't been displayed yet
+      for (let i = lastDisplayedSentMessageIndex + 1; i < sentMessages.length; i++) {
+        const msg = sentMessages[i];
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message received-message';
+        
+        if (msg.type === 'text' && msg.text) {
+          msgDiv.innerHTML = `
+            <div class="message-text">${escapeHtml(msg.text).replace(/\n/g, '<br>')}</div>
+          `;
+        } else if (msg.files && msg.files.length > 0) {
+          const filesHtml = msg.files.map(f => `
+            <div class="file-item-container">
+              <span class="file-item">${escapeHtml(f.name)} <span class="file-size">(${formatFileSize(f.size)})</span></span>
+            </div>
+          `).join('');
+          msgDiv.innerHTML = `
+            <div class="message-files">${filesHtml}</div>
+          `;
+        }
+        
+        // Insert at beginning to keep newest messages at top
+        messagesList.insertBefore(msgDiv, messagesList.firstChild);
+        lastDisplayedSentMessageIndex = i; // Update tracking index
+      }
     }
 
     // Event delegation for remove file buttons
