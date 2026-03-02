@@ -354,13 +354,15 @@ async function deriveKeyFromSharedSecret(sharedSecret) {
 
 // Set up WebSocket connection for real-time updates
 function setupWebSocket() {
+  console.log('[CONNECTOR] setupWebSocket() called');
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}`;
+  console.log('[CONNECTOR] Creating WebSocket connection to:', wsUrl);
   
   ws = new WebSocket(wsUrl);
   
   ws.onopen = () => {
-    console.log('WebSocket connected');
+    console.log('[CONNECTOR WS] WebSocket opened');
     // Subscribe to session as connector with auth token
     if (connectionCode && wsToken) {
       const subscribeMsg = {
@@ -371,6 +373,8 @@ function setupWebSocket() {
       };
       console.log('[CONNECTOR WS] Subscribing with:', subscribeMsg);
       ws.send(JSON.stringify(subscribeMsg));
+    } else {
+      console.log('[CONNECTOR WS] Cannot subscribe: connectionCode=', connectionCode, 'wsToken=', wsToken);
     }
   };
   
@@ -425,15 +429,19 @@ function setupWebSocket() {
 
 // Wait for main's public key via WebSocket
 async function waitForMainPublicKey(code, dhKeyPair) {
+  console.log('[CONNECTOR] waitForMainPublicKey() called with code:', code);
   return new Promise((resolve, reject) => {
     dhKeyPairPending = dhKeyPair;
     mainKeyResolver = resolve;
     
     // Set up WebSocket if not already connected
+    console.log('[CONNECTOR] ws current state:', ws ? ws.readyState : 'ws is null');
     if (!ws || ws.readyState !== WebSocket.OPEN) {
+      console.log('[CONNECTOR] Setting up new WebSocket');
       setupWebSocket();
     } else {
       // Already connected, just subscribe with auth token
+      console.log('[CONNECTOR] WebSocket already open, sending subscribe message');
       ws.send(JSON.stringify({
         type: 'subscribe',
         code: code,
@@ -445,6 +453,7 @@ async function waitForMainPublicKey(code, dhKeyPair) {
     // Timeout after 60 seconds
     setTimeout(() => {
       if (mainKeyResolver) {
+        console.log('[CONNECTOR] Timeout waiting for main public key');
         mainKeyResolver = null;
         dhKeyPairPending = null;
         reject(new Error('Timeout waiting for main public key'));
@@ -564,6 +573,10 @@ async function connectToMain() {
     wsToken = data.wsToken;  // Store WebSocket auth token
     console.log('[CONNECTOR] Set connectionCode to:', connectionCode, 'and wsToken');
 
+    // Set up WebSocket for real-time notifications (must happen regardless)
+    console.log('[CONNECTOR] Setting up WebSocket for notifications');
+    setupWebSocket();
+
     // If main's public key is not immediately available, wait via WebSocket
     if (!data.initiatorPublicKey) {
       status.innerHTML = '<span>Waiting for main to join...</span>';
@@ -573,6 +586,7 @@ async function connectToMain() {
       await waitForMainPublicKey(connectionCode, dhKeyPair);
     } else {
       // Main is already connected, establish key immediately
+      console.log('[CONNECTOR] Main already connected, completing key exchange immediately');
       await completeKeyExchange(dhKeyPair, data.initiatorPublicKey);
     }
 
