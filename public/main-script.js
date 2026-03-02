@@ -12,6 +12,8 @@ let connectionCode = null;
     let dhKeyPair = null;  // Our DH key pair
     let ws = null;  // WebSocket connection
     let wsToken = null;  // WebSocket authentication token
+    let selectedFiles = []; // Will store: {name, size, file}
+    let displayedMessageIds = new Set(); // Track which messages have been displayed
 
     // Set up WebSocket connection
     function setupWebSocket() {
@@ -328,8 +330,8 @@ let connectionCode = null;
           `;
         }
 
-        // Insert at the beginning to show newest messages first
-        messagesList.insertBefore(msgDiv, messagesList.firstChild);
+        // Insert right after the title to keep newest messages at top
+        messagesList.insertBefore(msgDiv, messagesList.querySelector('.messages-title').nextSibling);
       }
     }
 
@@ -539,21 +541,18 @@ let connectionCode = null;
         console.log('[MAIN] sendMessage() called');
         if (!connectionCode) {
           showError('Not connected to connector');
-          console.log('[MAIN] No connectionCode');
           return;
         }
 
         // Verify key exchange was completed successfully
         if (!encryptionKey) {
           showError('Secure connection not established. Key exchange may have failed. Please reconnect.');
-          console.log('[MAIN] No encryptionKey');
           return;
         }
 
         const text = document.getElementById('mainTextInput').value;
-        console.log('[MAIN] Text to send:', text.substring(0, 50));
-        if (!text.trim()) {
-          showError('Please enter a message');
+        if (!text.trim() && selectedFiles.length === 0) {
+          showError('Please enter a message or select files');
           return;
         }
 
@@ -561,79 +560,172 @@ let connectionCode = null;
         sendBtn.disabled = true;
         sendBtn.innerHTML = '<span class="spinner"></span><span class="spinner"></span><span class="spinner"></span> Sending...';
 
-        // Send text message
-        const textFormData = new FormData();
-        textFormData.append('code', connectionCode);
-        textFormData.append('messageType', 'text');
-        
-        // Encrypt the text using AES-256-GCM
-        const encoder = new TextEncoder();
-        const textData = encoder.encode(text);
-        
-        // Import the encryptionKey for use with Web Crypto API
-        const key = await crypto.subtle.importKey(
-          'raw',
-          encryptionKey,
-          { name: 'AES-GCM' },
-          false,
-          ['encrypt']
-        );
-        
-        const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV is optimal for AES-GCM per NIST
-        const ivHex = arrayToHex(iv);
-        const encrypted = await crypto.subtle.encrypt(
-          {
-            name: 'AES-GCM',
-            iv: iv
-          },
-          key,
-          textData
-        );
-        
-        const ciphertextHex = arrayToHex(new Uint8Array(encrypted));
-        
-        textFormData.append('ciphertext', ciphertextHex);
-        textFormData.append('iv', ivHex);
-        textFormData.append('authTag', '');
-        
-        console.log('[MAIN] Sending to /api/message/send/main with code:', connectionCode);
-        const response = await fetch('/api/message/send/main', {
-          method: 'POST',
-          body: textFormData
-        });
-        console.log('[MAIN] Response status:', response.status);
+        // Send text message if present
+        if (text) {
+          const textFormData = new FormData();
+          textFormData.append('code', connectionCode);
+          textFormData.append('messageType', 'text');
+          
+          // Encrypt the text using AES-256-GCM
+          const encoder = new TextEncoder();
+          const textData = encoder.encode(text);
+          
+          // Import the encryptionKey for use with Web Crypto API
+          const key = await crypto.subtle.importKey(
+            'raw',
+            encryptionKey,
+            { name: 'AES-GCM' },
+            false,
+            ['encrypt']
+          );
+          
+          const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV is optimal for AES-GCM per NIST
+          const ivHex = arrayToHex(iv);
+          const encrypted = await crypto.subtle.encrypt(
+            {
+              name: 'AES-GCM',
+              iv: iv
+            },
+            key,
+            textData
+          );
+          
+          const ciphertextHex = arrayToHex(new Uint8Array(encrypted));
+          
+          textFormData.append('ciphertext', ciphertextHex);
+          textFormData.append('iv', ivHex);
+          textFormData.append('authTag', '');
+          
+          console.log('[MAIN] Sending text to /api/message/send/main with code:', connectionCode);
+          const response = await fetch('/api/message/send/main', {
+            method: 'POST',
+            body: textFormData
+          });
 
-        if (response.status === 429) {
-          await showRateLimitError();
-          return;
-        }
-
-        if (!response.ok) {
-          let errorMsg = 'Send failed';
-          try {
-            const contentType = response.headers.get('content-type');
-            if (contentType && contentType.includes('application/json')) {
-              const error = await response.json();
-              errorMsg = error.error || errorMsg;
-            } else {
-              errorMsg = `Server error: ${response.status} ${response.statusText}`;
-            }
-          } catch (parseError) {
-            errorMsg = `Server error: ${response.status} ${response.statusText}`;
+          if (response.status === 429) {
+            await showRateLimitError();
+            return;
           }
-          throw new Error(errorMsg);
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Send text failed');
+          }
+        }
+        
+        // Send files if present
+        if (selectedFiles.length > 0) {
+          const formData = new FormData();
+          formData.append('code', connectionCode);
+          formData.append('messageType', 'files');
+          
+          const key = await crypto.subtle.importKey(
+            'raw',
+            encryptionKey,
+            { name: 'AES-GCM' },
+            false,
+            ['encrypt']
+          );
+          
+          for (let fileMetadata of selectedFiles) {
+            const fileBuffer = await fileMetadata.file.arrayBuffer();
+            const fileUint8Array = new Uint8Array(fileBuffer);
+            const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV is optimal for AES-GCM per NIST
+            const ivHex = arrayToHex(iv);
+            
+            // Encrypt the file name
+            const fileNameKey = await crypto.subtle.importKey(
+              'raw',
+              encryptionKey,
+              { name: 'AES-GCM' },
+              false,
+              ['encrypt']
+            );
+            const fileNameIv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV is optimal for AES-GCM per NIST
+            const fileNameIvHex = arrayToHex(fileNameIv);
+            const fileNameEncoder = new TextEncoder();
+            const fileNameData = fileNameEncoder.encode(fileMetadata.name);
+            const encryptedFileName = await crypto.subtle.encrypt(
+              {
+                name: 'AES-GCM',
+                iv: fileNameIv
+              },
+              fileNameKey,
+              fileNameData
+            );
+            const encryptedFileNameHex = arrayToHex(new Uint8Array(encryptedFileName));
+            
+            const encrypted = await crypto.subtle.encrypt(
+              {
+                name: 'AES-GCM',
+                iv: iv
+              },
+              key,
+              fileUint8Array
+            );
+            
+            // Create a new File object with encrypted data
+            const encryptedBlob = new Blob([new Uint8Array(encrypted)], { type: 'application/octet-stream' });
+            // Use generic filename to avoid transmitting original filename
+            const genericFilename = `encrypted_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const encryptedFile = new File(
+              [encryptedBlob],
+              genericFilename,
+              { type: 'application/octet-stream' }
+            );
+            
+            formData.append('files', encryptedFile);
+            formData.append('fileIvs[]', ivHex);
+            formData.append('fileNames[]', encryptedFileNameHex);
+            formData.append('fileNameIvs[]', fileNameIvHex);
+          }
+          
+          const response = await fetch('/api/message/send/main', {
+            method: 'POST',
+            body: formData
+          });
+
+          if (response.status === 429) {
+            await showRateLimitError();
+            return;
+          }
+
+          if (!response.ok) {
+            let errorMessage = 'Send files failed';
+            try {
+              const contentType = response.headers.get('content-type');
+              if (contentType && contentType.includes('application/json')) {
+                const error = await response.json();
+                errorMessage = error.error || errorMessage;
+              } else {
+                errorMessage = `Server error: ${response.status} ${response.statusText}`;
+              }
+            } catch (parseError) {
+              errorMessage = `Server error: ${response.status} ${response.statusText}`;
+            }
+            throw new Error(errorMessage);
+          }
         }
 
         showSuccess('Message sent securely!');
         document.getElementById('mainTextInput').value = '';
+        
+        // Clear file contents from memory to free RAM
+        selectedFiles.forEach(f => {
+          if (f.file) {
+            f.file = null; // Release file reference
+          }
+        });
+        selectedFiles = [];
+        renderFilesList();
 
         sendBtn.disabled = false;
-        sendBtn.innerHTML = 'Send Message';
+        sendBtn.innerHTML = 'Send Securely';
       } catch (error) {
         showError('Send failed: ' + error.message);
         console.error('Send error details:', error);
         document.getElementById('mainSendBtn').disabled = false;
-        document.getElementById('mainSendBtn').innerHTML = 'Send Message';
+        document.getElementById('mainSendBtn').innerHTML = 'Send Securely';
       }
     }
 
@@ -735,9 +827,87 @@ let connectionCode = null;
       }
     });
 
+    // File handling for main
+    function handleFileSelect(files) {
+      for (let file of files) {
+        // Check for duplicates
+        if (!selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
+          selectedFiles.push({
+            name: file.name,
+            size: file.size,
+            file: file
+          });
+        }
+      }
+      renderFilesList();
+    }
+
+    function renderFilesList() {
+      const filesList = document.getElementById('mainFilesList');
+      filesList.innerHTML = '';
+      
+      selectedFiles.forEach((file, index) => {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-item';
+        fileItem.innerHTML = `
+          <span>${escapeHtml(file.name)} <span class="file-size">(${formatFileSize(file.size)})</span></span>
+          <button class="remove-file" data-index="${index}">Remove</button>
+        `;
+        filesList.appendChild(fileItem);
+      });
+    }
+
+    function formatFileSize(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    // Event delegation for remove file buttons
+    document.addEventListener('click', function(e) {
+      if (e.target.classList.contains('remove-file')) {
+        const index = parseInt(e.target.dataset.index);
+        selectedFiles.splice(index, 1);
+        renderFilesList();
+      }
+    });
+
+    // Set up drag and drop for file upload
+    function setupDragAndDrop() {
+      const fileUploadArea = document.getElementById('fileUploadArea');
+      const fileInput = document.getElementById('mainFileInput');
+      
+      if (!fileUploadArea || !fileInput) return;
+      
+      fileUploadArea.addEventListener('click', () => fileInput.click());
+      
+      fileInput.addEventListener('change', (e) => {
+        handleFileSelect(e.target.files);
+        fileUploadArea.classList.remove('active');
+      });
+      
+      fileUploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        fileUploadArea.classList.add('active');
+      });
+      
+      fileUploadArea.addEventListener('dragleave', () => {
+        fileUploadArea.classList.remove('active');
+      });
+      
+      fileUploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fileUploadArea.classList.remove('active');
+        handleFileSelect(e.dataTransfer.files);
+      });
+    }
+
     // Initialize on page load
     window.addEventListener('DOMContentLoaded', () => {
       initializeMain();
+      setupDragAndDrop();
       
       // Set up copy code button event listener
       const copyCodeBtn = document.getElementById('copyCodeBtn');

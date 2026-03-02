@@ -32,7 +32,19 @@
     <div id="sendSection" class="send-section" style="display: none;">
       <div class="section-title">Send Message</div>
       <textarea id="mainTextInput" class="text-input" placeholder="Enter your message to send to the connector"></textarea>
-      <button class="btn send-button" id="mainSendBtn">Send Message</button>
+
+      <div>
+        <label class="section-title">Upload Files</label>
+        <div class="file-upload" id="fileUploadArea">
+          <input type="file" id="mainFileInput" multiple />
+          <label class="file-upload-label">
+            Click to browse or drag & drop files here
+          </label>
+        </div>
+        <div id="mainFilesList" class="files-list"></div>
+      </div>
+
+      <button class="btn send-button" id="mainSendBtn">Send Securely</button>
     </div>
 
     <div class="status">

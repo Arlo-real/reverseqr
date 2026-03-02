@@ -908,7 +908,8 @@ function displaySentMessages() {
       `;
     }
     
-    messagesList.appendChild(msgDiv);
+    // Insert right after the title to keep newest messages at top
+    messagesList.insertBefore(msgDiv, messagesList.querySelector('.messages-title').nextSibling);
     lastDisplayedSentMessageIndex = i; // Update tracking index
   }
 }
