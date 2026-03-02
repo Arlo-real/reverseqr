@@ -38,6 +38,7 @@ async function displayMaxFileSize() {
   }
 }
 
+
 // Call on page load
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', displayMaxFileSize);
@@ -896,11 +897,6 @@ async function sendMessage() {
 function displaySentMessages() {
   const messagesList = document.getElementById('messagesList');
   
-  // Only initialize title if messages list is empty
-  if (messagesList.children.length === 0) {
-    messagesList.innerHTML = '<div class="messages-title">Conversation</div>';
-  }
-  
   // Only display NEW messages that haven't been displayed yet
   for (let i = lastDisplayedSentMessageIndex + 1; i < sentMessages.length; i++) {
     const msg = sentMessages[i];
@@ -922,8 +918,8 @@ function displaySentMessages() {
       `;
     }
     
-    // Insert right after the title to keep newest messages at top
-    messagesList.insertBefore(msgDiv, messagesList.querySelector('.messages-title').nextSibling);
+    // Insert at beginning to keep newest messages at top
+    messagesList.insertBefore(msgDiv, messagesList.firstChild);
     lastDisplayedSentMessageIndex = i; // Update tracking index
   }
 }
@@ -1119,11 +1115,6 @@ async function downloadFile(filename, originalName, iv, hash, fileSize) {
 
 async function displayMessagesFromMain(messages) {
   const messagesList = document.getElementById('messagesList');
-  
-  // Initialize with title if empty
-  if (messagesList.children.length === 0) {
-    messagesList.innerHTML = '<div class="messages-title">Conversation</div>';
-  }
 
   for (const msgWrapper of messages) {
     // Handle both direct msg.type and msg.data.type formats
@@ -1174,7 +1165,7 @@ async function displayMessagesFromMain(messages) {
     }
 
     // Insert at the beginning to show newest messages first
-    messagesList.insertBefore(msgDiv, messagesList.querySelector('.messages-title').nextSibling);
+    messagesList.insertBefore(msgDiv, messagesList.firstChild);
   }
 }
 
