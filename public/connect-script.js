@@ -9,6 +9,7 @@ if (!window.crypto || !window.crypto.subtle) {
 
 let selectedFiles = []; // Will store: {name, size, file}
 let sentMessages = []; // Store sent messages for history
+let lastDisplayedSentMessageIndex = -1; // Track which sent messages have been displayed
 let connectionCode = null;
 let encryptionKey = null;
 let connectedMain = false;
@@ -886,8 +887,9 @@ function displaySentMessages() {
     messagesList.innerHTML = '<div class="messages-title">Conversation</div>';
   }
   
-  // Display messages in reverse order (newest first)
-  [...sentMessages].reverse().forEach((msg, idx) => {
+  // Only display NEW messages that haven't been displayed yet
+  for (let i = lastDisplayedSentMessageIndex + 1; i < sentMessages.length; i++) {
+    const msg = sentMessages[i];
     const msgDiv = document.createElement('div');
     msgDiv.className = 'message received-message';
     
@@ -907,7 +909,8 @@ function displaySentMessages() {
     }
     
     messagesList.appendChild(msgDiv);
-  });
+    lastDisplayedSentMessageIndex = i; // Update tracking index
+  }
 }
 
 let displayedMainMessageIds = new Set();
