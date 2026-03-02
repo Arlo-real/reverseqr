@@ -268,8 +268,6 @@ let connectionCode = null;
       return new Uint8Array(derivedBits);
     }
 
-    let displayedMessageIds = new Set();
-
     async function displayMessages(messages) {
       const messagesSection = document.getElementById('messagesSection');
       const messagesList = document.getElementById('messagesList');
