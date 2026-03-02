@@ -960,6 +960,47 @@ async function fetchAndDisplayMessagesFromMain() {
 }
 
 // Display messages received from main
+// Decrypt text message
+async function decryptText(ciphertext, iv, encryptionKey) {
+  try {
+    if (!ciphertext || !iv) return '[No message content]';
+    
+    const ciphertextBuffer = hexToArray(ciphertext);
+    const ivBuffer = hexToArray(iv);
+    
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encryptionKey,
+      { name: 'AES-GCM' },
+      false,
+      ['decrypt']
+    );
+    
+    const decrypted = await crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv: ivBuffer
+      },
+      key,
+      ciphertextBuffer
+    );
+    
+    const decoder = new TextDecoder();
+    return decoder.decode(decrypted);
+  } catch (e) {
+    console.error('Text decryption error:', e);
+    return '[Decryption failed]';
+  }
+}
+
+function hexToArray(hex) {
+  const bytes = [];
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes.push(parseInt(hex.substr(i, 2), 16));
+  }
+  return new Uint8Array(bytes);
+}
+
 async function displayMessagesFromMain(messages) {
   const receivedMessagesDiv = document.getElementById('receivedMessagesSection');
   let messagesList;
