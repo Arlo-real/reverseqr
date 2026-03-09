@@ -148,5 +148,7 @@ Contributions are welcome! Please feel free to submit issues or pull requests.
 3. Try using the setupscript
 4. Reboot yourself (sleep) and try again
 
+## Known issues:
+nothing yet
 
 **Made with passion in Munich, Germany**

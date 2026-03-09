@@ -721,7 +721,7 @@ async function sendMessage() {
       );
       
       const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV is optimal for AES-GCM per NIST
-      const ivHex = arrayToHex(iv);
+      const ivBase64 = arrayToBase64(iv);
       const encrypted = await crypto.subtle.encrypt(
         {
           name: 'AES-GCM',
@@ -731,10 +731,11 @@ async function sendMessage() {
         textData
       );
       
-      const ciphertextHex = arrayToHex(new Uint8Array(encrypted));
+      // Send encrypted ciphertext as raw binary (no encoding)
+      const ciphertextBlob = new Blob([new Uint8Array(encrypted)], { type: 'application/octet-stream' });
       
-      textFormData.append('ciphertext', ciphertextHex);
-      textFormData.append('iv', ivHex);
+      textFormData.append('ciphertext', ciphertextBlob);
+      textFormData.append('iv', ivBase64);
       textFormData.append('authTag', '');
       
       const textResponse = await fetch('/api/message/send', {
@@ -782,7 +783,7 @@ async function sendMessage() {
           ['encrypt']
         );
         const fileNameIv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV is optimal for AES-GCM per NIST
-        const fileNameIvHex = arrayToHex(fileNameIv);
+        const fileNameIvBase64 = arrayToBase64(fileNameIv);
         const fileNameEncoder = new TextEncoder();
         const fileNameData = fileNameEncoder.encode(fileMetadata.name);
         const encryptedFileName = await crypto.subtle.encrypt(
@@ -793,7 +794,7 @@ async function sendMessage() {
           fileNameKey,
           fileNameData
         );
-        const encryptedFileNameHex = arrayToHex(new Uint8Array(encryptedFileName));
+        const encryptedFileNameBase64 = arrayToBase64(new Uint8Array(encryptedFileName));
         
         const encrypted = await crypto.subtle.encrypt(
           {
@@ -816,8 +817,8 @@ async function sendMessage() {
         
         formData.append('files', encryptedFile);
         formData.append('fileIvs[]', ivHex);
-        formData.append('fileNames[]', encryptedFileNameHex);
-        formData.append('fileNameIvs[]', fileNameIvHex);
+        formData.append('fileNames[]', encryptedFileNameBase64);
+        formData.append('fileNameIvs[]', fileNameIvBase64);
       }
       
       const response = await fetch('/api/message/send', {
@@ -976,8 +977,9 @@ async function decryptText(ciphertext, iv, encryptionKey) {
   try {
     if (!ciphertext || !iv) return '[No message content]';
     
-    const ciphertextBuffer = hexToArray(ciphertext);
-    const ivBuffer = hexToArray(iv);
+    // ciphertext is already binary (Uint8Array), no need to decode
+    const ciphertextBuffer = ciphertext instanceof Uint8Array ? ciphertext : new Uint8Array(ciphertext);
+    const ivBuffer = base64ToArray(iv);
     
     const key = await crypto.subtle.importKey(
       'raw',
@@ -1017,7 +1019,8 @@ async function decryptFileData(encryptedBuffer, iv, encryptionKey) {
   try {
     if (!encryptedBuffer || !iv) return null;
     
-    const ivBuffer = hexToArray(iv);
+    // encryptedBuffer is already binary, iv is base64
+    const ivBuffer = base64ToArray(iv);
     
     const key = await crypto.subtle.importKey(
       'raw',
@@ -1173,6 +1176,20 @@ function stringToHex(str) {
   const encoder = new TextEncoder();
   const data = encoder.encode(str);
   return Array.from(data).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function arrayToBase64(arr) {
+  const binary = String.fromCharCode.apply(null, arr);
+  return btoa(binary);
+}
+
+function base64ToArray(base64Str) {
+  const binary = atob(base64Str);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
 
 function arrayToHex(arr) {

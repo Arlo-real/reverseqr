@@ -562,10 +562,31 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
     };
 
     if (messageType === 'text') {
+      // Handle binary ciphertext that may be sent as a file (Blob)
+      let finalCiphertext = ciphertext;
+      
+      // Check if ciphertext was sent as a file (binary Blob)
+      if (req.files && req.files.length > 0) {
+        // Find the ciphertext file (fieldname would be 'ciphertext')
+        const ciphertextFile = req.files.find(f => f.fieldname === 'ciphertext');
+        if (ciphertextFile) {
+          try {
+            // Read the binary file and encode as base64 for storage & transport
+            const fileBuffer = fs.readFileSync(ciphertextFile.path);
+            finalCiphertext = fileBuffer.toString('base64');
+            // Clean up temporary file
+            fs.unlinkSync(ciphertextFile.path);
+          } catch (error) {
+            console.error('Error processing ciphertext file:', error);
+            return res.status(500).json({ error: 'Failed to process ciphertext' });
+          }
+        }
+      }
+      
       // Store encrypted text message
       messageData = {
         ...messageData,
-        ciphertext,
+        ciphertext: finalCiphertext,
         iv,
         authTag,
         hash,
@@ -577,10 +598,16 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
         return res.status(400).json({ error: 'No files provided' });
       }
 
+      // Filter to only actual encrypted files (not the ciphertext field)
+      const actualFiles = req.files.filter(f => f.fieldname === 'files');
+      if (actualFiles.length === 0) {
+        return res.status(400).json({ error: 'No files provided' });
+      }
+
       const encryptedFiles = [];
 
-      for (let i = 0; i < req.files.length; i++) {
-        const file = req.files[i];
+      for (let i = 0; i < actualFiles.length; i++) {
+        const file = actualFiles[i];
         // With disk storage, files are already saved - just reference them
         const filename = file.filename; // filename from disk storage
         const iv = fileIvs[i] || '';
@@ -611,12 +638,12 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
     connManager.storeMessage(code, 'connector', messageData);
     
     // Calculate total size for logging
-    // For text messages: ciphertext is hex-encoded (each 2 chars = 1 byte)
-    // For files: req.files contains actual file sizes
+    // For text messages: ciphertext is base64-encoded (~1.33x original size)
+    // Base64 encodes 3 bytes into 4 characters
     let totalSize = 0;
     if (messageType === 'text' && ciphertext) {
-      // Hex string: 2 chars per byte
-      totalSize += Math.ceil(ciphertext.length / 2);
+      // Base64 is 4/3 of original size (33% overhead, not 100% like hex)
+      totalSize += Math.ceil(ciphertext.length * 3 / 4);
     }
     if (messageType === 'files' && req.files) {
       req.files.forEach(file => {
@@ -711,10 +738,31 @@ app.post('/api/message/send/main', uploadLimiter, checkStorageMiddleware, upload
     };
 
     if (messageType === 'text') {
+      // Handle binary ciphertext that may be sent as a file (Blob)
+      let finalCiphertext = ciphertext;
+      
+      // Check if ciphertext was sent as a file (binary Blob)
+      if (req.files && req.files.length > 0) {
+        // Find the ciphertext file (fieldname would be 'ciphertext')
+        const ciphertextFile = req.files.find(f => f.fieldname === 'ciphertext');
+        if (ciphertextFile) {
+          try {
+            // Read the binary file and encode as base64 for storage & transport
+            const fileBuffer = fs.readFileSync(ciphertextFile.path);
+            finalCiphertext = fileBuffer.toString('base64');
+            // Clean up temporary file
+            fs.unlinkSync(ciphertextFile.path);
+          } catch (error) {
+            console.error('Error processing ciphertext file:', error);
+            return res.status(500).json({ error: 'Failed to process ciphertext' });
+          }
+        }
+      }
+      
       // Store encrypted text message
       messageData = {
         ...messageData,
-        ciphertext,
+        ciphertext: finalCiphertext,
         iv,
         authTag,
         hash,
@@ -726,10 +774,16 @@ app.post('/api/message/send/main', uploadLimiter, checkStorageMiddleware, upload
         return res.status(400).json({ error: 'No files provided' });
       }
 
+      // Filter to only actual encrypted files (not the ciphertext field)
+      const actualFiles = req.files.filter(f => f.fieldname === 'files');
+      if (actualFiles.length === 0) {
+        return res.status(400).json({ error: 'No files provided' });
+      }
+
       const encryptedFiles = [];
 
-      for (let i = 0; i < req.files.length; i++) {
-        const file = req.files[i];
+      for (let i = 0; i < actualFiles.length; i++) {
+        const file = actualFiles[i];
         const filename = file.filename;
         const iv = fileIvs[i] || '';
         const hash = fileHashes[i] || '';
@@ -761,9 +815,11 @@ app.post('/api/message/send/main', uploadLimiter, checkStorageMiddleware, upload
     console.log('[SERVER] Message stored, notifying connector');
     
     // Calculate total size for logging
+    // For text messages: ciphertext is base64-encoded (~1.33x original size)
     let totalSize = 0;
     if (messageType === 'text' && ciphertext) {
-      totalSize += Math.ceil(ciphertext.length / 2);
+      // Base64 is 4/3 of original size (33% overhead, not 100% like hex)
+      totalSize += Math.ceil(ciphertext.length * 3 / 4);
     }
     if (messageType === 'files' && req.files) {
       req.files.forEach(file => {
