@@ -292,11 +292,6 @@ let connectionCode = null;
       const messagesList = document.getElementById('messagesList');
       messagesSection.style.display = 'block';
 
-      // Only clear on first display (when messagesList is empty)
-      if (messagesList.children.length === 0) {
-        messagesList.innerHTML = '<div class="messages-title">Conversation</div>';
-      }
-
       for (const msgWrapper of messages) {
         // Handle both direct msg.type and msg.data.type formats
         const msg = msgWrapper.data || msgWrapper;
@@ -317,7 +312,6 @@ let connectionCode = null;
           }
 
           msgDiv.innerHTML = `
-            <div class="message-type">Text Message</div>
             <div class="message-text">${escapeHtml(decrypted).replace(/\n/g, '<br>')}</div>
           `;
         } else if (msg.type === 'files') {
@@ -340,15 +334,14 @@ let connectionCode = null;
           }
           
           msgDiv.innerHTML = `
-            <div class="message-type">Files</div>
             <div class="message-files">
               ${filesHtml}
             </div>
           `;
         }
 
-        // Insert right after the title to keep newest messages at top
-        messagesList.insertBefore(msgDiv, messagesList.querySelector('.messages-title').nextSibling);
+        // Insert at beginning to keep newest messages at top
+        messagesList.insertBefore(msgDiv, messagesList.firstChild);
       }
     }
 
