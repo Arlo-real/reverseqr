@@ -562,31 +562,28 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
     };
 
     if (messageType === 'text') {
-      // Handle binary ciphertext that may be sent as a file (Blob)
-      let finalCiphertext = ciphertext;
+      // Handle binary ciphertext that was sent as a file (Blob)
+      let ciphertextFilename = null;
       
       // Check if ciphertext was sent as a file (binary Blob)
       if (req.files && req.files.length > 0) {
         // Find the ciphertext file (fieldname would be 'ciphertext')
         const ciphertextFile = req.files.find(f => f.fieldname === 'ciphertext');
         if (ciphertextFile) {
-          try {
-            // Read the binary file and encode as base64 for storage & transport
-            const fileBuffer = fs.readFileSync(ciphertextFile.path);
-            finalCiphertext = fileBuffer.toString('base64');
-            // Clean up temporary file
-            fs.unlinkSync(ciphertextFile.path);
-          } catch (error) {
-            console.error('Error processing ciphertext file:', error);
-            return res.status(500).json({ error: 'Failed to process ciphertext' });
-          }
+          // Keep the file on disk, just reference it by filename
+          ciphertextFilename = ciphertextFile.filename;
+          uploadedFiles.set(ciphertextFilename, Date.now()); // Track for cleanup
         }
       }
       
-      // Store encrypted text message
+      if (!ciphertextFilename) {
+        return res.status(400).json({ error: 'Encrypted message file required' });
+      }
+      
+      // Store encrypted text message with file reference
       messageData = {
         ...messageData,
-        ciphertext: finalCiphertext,
+        ciphertextFile: ciphertextFilename,
         iv,
         authTag,
         hash,
@@ -738,31 +735,28 @@ app.post('/api/message/send/main', uploadLimiter, checkStorageMiddleware, upload
     };
 
     if (messageType === 'text') {
-      // Handle binary ciphertext that may be sent as a file (Blob)
-      let finalCiphertext = ciphertext;
+      // Handle binary ciphertext that was sent as a file (Blob)
+      let ciphertextFilename = null;
       
       // Check if ciphertext was sent as a file (binary Blob)
       if (req.files && req.files.length > 0) {
         // Find the ciphertext file (fieldname would be 'ciphertext')
         const ciphertextFile = req.files.find(f => f.fieldname === 'ciphertext');
         if (ciphertextFile) {
-          try {
-            // Read the binary file and encode as base64 for storage & transport
-            const fileBuffer = fs.readFileSync(ciphertextFile.path);
-            finalCiphertext = fileBuffer.toString('base64');
-            // Clean up temporary file
-            fs.unlinkSync(ciphertextFile.path);
-          } catch (error) {
-            console.error('Error processing ciphertext file:', error);
-            return res.status(500).json({ error: 'Failed to process ciphertext' });
-          }
+          // Keep the file on disk, just reference it by filename
+          ciphertextFilename = ciphertextFile.filename;
+          uploadedFiles.set(ciphertextFilename, Date.now()); // Track for cleanup
         }
       }
       
-      // Store encrypted text message
+      if (!ciphertextFilename) {
+        return res.status(400).json({ error: 'Encrypted message file required' });
+      }
+      
+      // Store encrypted text message with file reference
       messageData = {
         ...messageData,
-        ciphertext: finalCiphertext,
+        ciphertextFile: ciphertextFilename,
         iv,
         authTag,
         hash,

@@ -299,10 +299,20 @@ let connectionCode = null;
         msgDiv.className = 'message received-message';
 
         if (msg.type === 'text') {
-          // Decrypt the text message - must have ciphertext
+          // Decrypt the text message
           let decrypted = '';
           
-          if (msg.ciphertext && msg.iv && encryptionKey) {
+          if (msg.ciphertextFile && msg.iv && encryptionKey) {
+            // Download the encrypted file as binary
+            try {
+              const ciphertextBinary = await downloadEncryptedData(msg.ciphertextFile);
+              decrypted = await decryptText(ciphertextBinary, msg.iv, encryptionKey);
+            } catch (error) {
+              console.error('Error downloading/decrypting text:', error);
+              decrypted = '[Failed to download message]';
+            }
+          } else if (msg.ciphertext && msg.iv && encryptionKey) {
+            // Fallback for old base64 format (for compatibility)
             decrypted = await decryptText(msg.ciphertext, msg.iv, encryptionKey);
           } else if (msg.text) {
             // Fallback to plain text if no encryption
@@ -325,7 +335,7 @@ let connectionCode = null;
               }
               return `
                 <div class="file-item-container">
-                  <a href="#" class="file-item file-download-link" data-filename="${f.filename}" data-name="${displayName}" data-iv="${f.iv || ''}" data-size="${f.size || 0}" style="cursor: pointer;">${escapeHtml(displayName)}</a>
+                  <a href="#" class="file-item file-download-link" data-filename="${f.filename}" data-name="${displayName}" data-iv="${f.iv || ''}" data-hash="${f.hash || ''}" data-size="${f.size || 0}" style="cursor: pointer;">${escapeHtml(displayName)}</a>
                 </div>
               `;
             })).then(results => results.join(''));
@@ -342,6 +352,20 @@ let connectionCode = null;
 
         // Insert at beginning to keep newest messages at top
         messagesList.insertBefore(msgDiv, messagesList.firstChild);
+      }
+    }
+
+    // Download encrypted data from server as binary
+    async function downloadEncryptedData(filename) {
+      try {
+        const response = await fetch(`/api/file/download/${encodeURIComponent(filename)}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        return await response.arrayBuffer();
+      } catch (error) {
+        console.error('Error downloading encrypted data:', error);
+        throw error;
       }
     }
 
@@ -363,8 +387,21 @@ let connectionCode = null;
       try {
         if (!ciphertext || !iv) return '[No message content]';
         
-        // ciphertext is already binary (Uint8Array), no need to decode
-        const ciphertextBuffer = ciphertext instanceof Uint8Array ? ciphertext : new Uint8Array(ciphertext);
+        // ciphertext may be: base64 string, Uint8Array, or ArrayBuffer (from fetch)
+        let ciphertextBuffer;
+        if (typeof ciphertext === 'string') {
+          // It's base64 from server, decode it
+          ciphertextBuffer = base64ToArray(ciphertext);
+        } else if (ciphertext instanceof ArrayBuffer) {
+          // Direct binary from fetch
+          ciphertextBuffer = new Uint8Array(ciphertext);
+        } else if (ciphertext instanceof Uint8Array) {
+          // Already binary
+          ciphertextBuffer = ciphertext;
+        } else {
+          // Try to convert
+          ciphertextBuffer = new Uint8Array(ciphertext);
+        }
         const ivBuffer = base64ToArray(iv);
         
         const key = await crypto.subtle.importKey(
@@ -396,7 +433,23 @@ let connectionCode = null;
       try {
         if (!encryptedBuffer || !iv) return null;
         
-        // encryptedBuffer is already binary, iv is base64
+        // encryptedBuffer may be: base64 string, Uint8Array, or ArrayBuffer
+        let finalBuffer;
+        if (typeof encryptedBuffer === 'string') {
+          // It's base64 from server, decode it
+          finalBuffer = base64ToArray(encryptedBuffer);
+        } else if (encryptedBuffer instanceof ArrayBuffer) {
+          // Direct binary from fetch
+          finalBuffer = new Uint8Array(encryptedBuffer);
+        } else if (encryptedBuffer instanceof Uint8Array) {
+          // Already binary
+          finalBuffer = encryptedBuffer;
+        } else {
+          // Try to convert
+          finalBuffer = new Uint8Array(encryptedBuffer);
+        }
+        
+        // iv is base64
         const ivBuffer = base64ToArray(iv);
         
         const key = await crypto.subtle.importKey(
@@ -413,7 +466,7 @@ let connectionCode = null;
             iv: ivBuffer
           },
           key,
-          encryptedBuffer
+          finalBuffer
         );
         
         return decrypted;
