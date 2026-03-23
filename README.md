@@ -149,6 +149,5 @@ Contributions are welcome! Please feel free to submit issues or pull requests.
 4. Reboot yourself (sleep) and try again
 
 ## Known issues:
-nothing yet
-
+There is a problem with large files: they need to be stored in ram for en- and decryption. This means that even if the server owner allows large files, there is a client side limit. To check if you can handle sending a file, please check if you have aproximatively 1.5x the file size available in ram.
 **Made with passion in Munich, Germany**

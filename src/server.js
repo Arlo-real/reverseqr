@@ -186,6 +186,27 @@ const upload = multer({
   }
 });
 
+// Multer configuration for message uploads - accepts both files and text fields
+const uploadMessage = multer({
+  storage,
+  limits: {
+    fileSize: MAX_FILE_SIZE_BYTES
+  }
+}).fields([
+  { name: 'files', maxCount: 999 },
+  { name: 'ciphertext', maxCount: 1 },
+  { name: 'code', maxCount: 1 },
+  { name: 'messageType', maxCount: 1 },
+  { name: 'iv', maxCount: 1 },
+  { name: 'authTag', maxCount: 1 },
+  { name: 'hash', maxCount: 1 },
+  { name: 'text', maxCount: 1 },
+  { name: 'fileIvs[]', maxCount: 999 },
+  { name: 'fileHashes[]', maxCount: 999 },
+  { name: 'fileNames[]', maxCount: 999 },
+  { name: 'fileNameIvs[]', maxCount: 999 }
+]);
+
 // Connection manager
 const connManager = new ConnectionManager({
   sessionTimeoutMs: SESSION_TIMEOUT_MS,
@@ -502,7 +523,7 @@ app.get('/api/session/status/:code', (req, res) => {
   }
 });
 
-app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.array('files'), (req, res) => {
+app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, uploadMessage, (req, res) => {
   try {
     let { code, messageType, ciphertext, iv, authTag, hash, text } = req.body;
     const clientIp = req.ip;
@@ -566,14 +587,12 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
       let ciphertextFilename = null;
       
       // Check if ciphertext was sent as a file (binary Blob)
-      if (req.files && req.files.length > 0) {
-        // Find the ciphertext file (fieldname would be 'ciphertext')
-        const ciphertextFile = req.files.find(f => f.fieldname === 'ciphertext');
-        if (ciphertextFile) {
-          // Keep the file on disk, just reference it by filename
-          ciphertextFilename = ciphertextFile.filename;
-          uploadedFiles.set(ciphertextFilename, Date.now()); // Track for cleanup
-        }
+      // With .fields(), req.files.ciphertext is an array
+      if (req.files && req.files.ciphertext && req.files.ciphertext.length > 0) {
+        const ciphertextFile = req.files.ciphertext[0];
+        // Keep the file on disk, just reference it by filename
+        ciphertextFilename = ciphertextFile.filename;
+        uploadedFiles.set(ciphertextFilename, Date.now()); // Track for cleanup
       }
       
       if (!ciphertextFilename) {
@@ -591,12 +610,13 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
       };
     } else if (messageType === 'files') {
       // Handle encrypted file uploads
-      if (!req.files || req.files.length === 0) {
+      // With .fields(), req.files.files is an array
+      if (!req.files || !req.files.files || req.files.files.length === 0) {
         return res.status(400).json({ error: 'No files provided' });
       }
 
-      // Filter to only actual encrypted files (not the ciphertext field)
-      const actualFiles = req.files.filter(f => f.fieldname === 'files');
+      // Use the actual encrypted files
+      const actualFiles = req.files.files;
       if (actualFiles.length === 0) {
         return res.status(400).json({ error: 'No files provided' });
       }
@@ -638,19 +658,20 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
     // For text messages: ciphertext is base64-encoded (~1.33x original size)
     // Base64 encodes 3 bytes into 4 characters
     let totalSize = 0;
-    if (messageType === 'text' && ciphertext) {
-      // Base64 is 4/3 of original size (33% overhead, not 100% like hex)
-      totalSize += Math.ceil(ciphertext.length * 3 / 4);
+    if (messageType === 'text' && req.files && req.files.ciphertext) {
+      // Binary file size
+      totalSize += req.files.ciphertext[0].size;
     }
-    if (messageType === 'files' && req.files) {
-      req.files.forEach(file => {
+    if (messageType === 'files' && req.files && req.files.files) {
+      req.files.files.forEach(file => {
         totalSize += file.size;
       });
     }
     
     // Log the event with formatted file size
     const action = messageType === 'files' ? 'sent file(s)' : 'sent message';
-    const details = messageType === 'files' ? `(${req.files.length} files) size: ${formatBytes(totalSize)}` : `size: ${formatBytes(totalSize)}`;
+    const numFiles = (messageType === 'files' && req.files && req.files.files) ? req.files.files.length : 0;
+    const details = messageType === 'files' ? `(${numFiles} files) size: ${formatBytes(totalSize)}` : `size: ${formatBytes(totalSize)}`;
     logEvent(clientIp, action, details);
     
     // Notify main via WebSocket that a new message is available
@@ -675,7 +696,7 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.arra
  * API: Send message from main to connector
  * Similar to /api/message/send but stores in mainMessages array
  */
-app.post('/api/message/send/main', uploadLimiter, checkStorageMiddleware, upload.array('files'), (req, res) => {
+app.post('/api/message/send/main', uploadLimiter, checkStorageMiddleware, uploadMessage, (req, res) => {
   try {
     let { code, messageType, ciphertext, iv, authTag, hash, text } = req.body;
     const clientIp = req.ip;
@@ -739,14 +760,12 @@ app.post('/api/message/send/main', uploadLimiter, checkStorageMiddleware, upload
       let ciphertextFilename = null;
       
       // Check if ciphertext was sent as a file (binary Blob)
-      if (req.files && req.files.length > 0) {
-        // Find the ciphertext file (fieldname would be 'ciphertext')
-        const ciphertextFile = req.files.find(f => f.fieldname === 'ciphertext');
-        if (ciphertextFile) {
-          // Keep the file on disk, just reference it by filename
-          ciphertextFilename = ciphertextFile.filename;
-          uploadedFiles.set(ciphertextFilename, Date.now()); // Track for cleanup
-        }
+      // With .fields(), req.files.ciphertext is an array
+      if (req.files && req.files.ciphertext && req.files.ciphertext.length > 0) {
+        const ciphertextFile = req.files.ciphertext[0];
+        // Keep the file on disk, just reference it by filename
+        ciphertextFilename = ciphertextFile.filename;
+        uploadedFiles.set(ciphertextFilename, Date.now()); // Track for cleanup
       }
       
       if (!ciphertextFilename) {
@@ -764,12 +783,13 @@ app.post('/api/message/send/main', uploadLimiter, checkStorageMiddleware, upload
       };
     } else if (messageType === 'files') {
       // Handle encrypted file uploads
-      if (!req.files || req.files.length === 0) {
+      // With .fields(), req.files.files is an array
+      if (!req.files || !req.files.files || req.files.files.length === 0) {
         return res.status(400).json({ error: 'No files provided' });
       }
 
-      // Filter to only actual encrypted files (not the ciphertext field)
-      const actualFiles = req.files.filter(f => f.fieldname === 'files');
+      // Use the actual encrypted files
+      const actualFiles = req.files.files;
       if (actualFiles.length === 0) {
         return res.status(400).json({ error: 'No files provided' });
       }
@@ -811,19 +831,20 @@ app.post('/api/message/send/main', uploadLimiter, checkStorageMiddleware, upload
     // Calculate total size for logging
     // For text messages: ciphertext is base64-encoded (~1.33x original size)
     let totalSize = 0;
-    if (messageType === 'text' && ciphertext) {
-      // Base64 is 4/3 of original size (33% overhead, not 100% like hex)
-      totalSize += Math.ceil(ciphertext.length * 3 / 4);
+    if (messageType === 'text' && req.files && req.files.ciphertext) {
+      // Binary file size
+      totalSize += req.files.ciphertext[0].size;
     }
-    if (messageType === 'files' && req.files) {
-      req.files.forEach(file => {
+    if (messageType === 'files' && req.files && req.files.files) {
+      req.files.files.forEach(file => {
         totalSize += file.size;
       });
     }
     
     // Log the event with formatted file size
     const action = messageType === 'files' ? 'sent file(s) [MAIN]' : 'sent message [MAIN]';
-    const details = messageType === 'files' ? `(${req.files.length} files) size: ${formatBytes(totalSize)}` : `size: ${formatBytes(totalSize)}`;
+    const numFiles = (messageType === 'files' && req.files && req.files.files) ? req.files.files.length : 0;
+    const details = messageType === 'files' ? `(${numFiles} files) size: ${formatBytes(totalSize)}` : `size: ${formatBytes(totalSize)}`;
     logEvent(clientIp, action, details);
     
     // Notify connector via WebSocket that a new message is available from main

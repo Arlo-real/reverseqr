@@ -335,7 +335,7 @@ let connectionCode = null;
               }
               return `
                 <div class="file-item-container">
-                  <a href="#" class="file-item file-download-link" data-filename="${f.filename}" data-name="${displayName}" data-iv="${f.iv || ''}" data-hash="${f.hash || ''}" data-size="${f.size || 0}" style="cursor: pointer;">${escapeHtml(displayName)}</a>
+                  <a href="#" class="file-item file-download-link" data-filename="${f.filename}" data-name="${displayName}" data-iv="${f.iv || ''}" data-hash="${f.hash || ''}" data-size="${f.size || 0}" style="cursor: pointer;">${escapeHtml(displayName)} <span class="file-size">(${formatFileSize(f.size)})</span></a>
                 </div>
               `;
             })).then(results => results.join(''));
@@ -681,10 +681,6 @@ let connectionCode = null;
         
         // Send files if present
         if (selectedFiles.length > 0) {
-          const formData = new FormData();
-          formData.append('code', connectionCode);
-          formData.append('messageType', 'files');
-          
           const key = await crypto.subtle.importKey(
             'raw',
             encryptionKey,
@@ -693,10 +689,17 @@ let connectionCode = null;
             ['encrypt']
           );
           
+          const fileIvs = [];
+          const fileNames = [];
+          const fileNameIvs = [];
+          const encryptedBlobs = [];
+          
+          // Process each file: encrypt and collect metadata
           for (let fileMetadata of selectedFiles) {
+            // Read file in chunks to avoid loading entire file into memory at once
             const fileBuffer = await fileMetadata.file.arrayBuffer();
             const fileUint8Array = new Uint8Array(fileBuffer);
-            const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV is optimal for AES-GCM per NIST
+            const iv = crypto.getRandomValues(new Uint8Array(12));
             const ivBase64 = arrayToBase64(iv);
             
             // Encrypt the file name
@@ -707,7 +710,7 @@ let connectionCode = null;
               false,
               ['encrypt']
             );
-            const fileNameIv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV is optimal for AES-GCM per NIST
+            const fileNameIv = crypto.getRandomValues(new Uint8Array(12));
             const fileNameIvBase64 = arrayToBase64(fileNameIv);
             const fileNameEncoder = new TextEncoder();
             const fileNameData = fileNameEncoder.encode(fileMetadata.name);
@@ -721,6 +724,7 @@ let connectionCode = null;
             );
             const encryptedFileNameBase64 = arrayToBase64(new Uint8Array(encryptedFileName));
             
+            // Encrypt file data - use streaming encryption wrapper
             const encrypted = await crypto.subtle.encrypt(
               {
                 name: 'AES-GCM',
@@ -730,9 +734,19 @@ let connectionCode = null;
               fileUint8Array
             );
             
-            // Create a new File object with encrypted data (raw binary, no encoding)
-            const encryptedBlob = new Blob([new Uint8Array(encrypted)], { type: 'application/octet-stream' });
-            // Use generic filename to avoid transmitting original filename
+            fileIvs.push(ivBase64);
+            fileNames.push(encryptedFileNameBase64);
+            fileNameIvs.push(fileNameIvBase64);
+            encryptedBlobs.push(new Uint8Array(encrypted));
+          }
+          
+          // Build FormData with encrypted files
+          const formData = new FormData();
+          formData.append('code', connectionCode);
+          formData.append('messageType', 'files');
+          
+          for (let i = 0; i < encryptedBlobs.length; i++) {
+            const encryptedBlob = new Blob([encryptedBlobs[i]], { type: 'application/octet-stream' });
             const genericFilename = `encrypted_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             const encryptedFile = new File(
               [encryptedBlob],
@@ -741,9 +755,9 @@ let connectionCode = null;
             );
             
             formData.append('files', encryptedFile);
-            formData.append('fileIvs[]', ivBase64);
-            formData.append('fileNames[]', encryptedFileNameBase64);
-            formData.append('fileNameIvs[]', fileNameIvBase64);
+            formData.append('fileIvs[]', fileIvs[i]);
+            formData.append('fileNames[]', fileNames[i]);
+            formData.append('fileNameIvs[]', fileNameIvs[i]);
           }
           
           const response = await fetch('/api/message/send/main', {
