@@ -197,3 +197,6 @@ sudo systemctl start nginx
 - **QR code not working**: Ensure `BASE_URL` in `.env` matches your domain
 - **QR code and connection code not generating**: Make sure https in being used
 - **Service won't start**: Check node path with `which node` and update the service file
+
+I made the transfer dibiractionnal! Yepeeeeeeeeeee!
+It's going up, it's going down!
