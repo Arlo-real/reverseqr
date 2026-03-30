@@ -9,14 +9,31 @@ services:
     build: .
     container_name: reverseqr
     restart: unless-stopped
+    
+    # Run as non-root user (node, UID 1000)
+    user: "1000:1000"
+    
     env_file:
       - .env
     volumes:
       # Persist uploads between restarts
-      - uploads_data:/app/public/uploads
+      - uploads_data:/app/public/uploads:rw
     ports:
       # Expose directly when not using nginx
       - "${PORT:-3000}:${PORT:-3000}"
+    
+    # Security hardening
+    security_opt:
+      - no-new-privileges:true  # Prevent privilege escalation
+    
+    # Drop all unnecessary Linux capabilities
+    cap_drop:
+      - ALL
+    
+    # Temporary filesystem for /tmp (isolates from host)
+    tmpfs:
+      - /tmp:noexec,nodev,nosuid
+    
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:${PORT:-3000}/"]
       interval: 30s
