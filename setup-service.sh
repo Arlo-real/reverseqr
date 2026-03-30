@@ -65,6 +65,18 @@ check_port_free() {
   return 0
 }
 
+# Helper function to read PORT from .env (defaults to 3000)
+get_port() {
+  if [ -f "$SCRIPT_DIR/.env" ]; then
+    local port=$(grep -E "^PORT=" "$SCRIPT_DIR/.env" | cut -d'=' -f2 | tr -d '"' | tr -d "'" | head -1)
+    if [ -n "$port" ]; then
+      echo "$port"
+      return
+    fi
+  fi
+  echo "3000"
+}
+
 # Function to set up HTTPS with Let's Encrypt
 setup_https() {
   echo ""
@@ -159,6 +171,8 @@ setup_https() {
   
   # Start containers with nginx and ssl profiles
   echo "[*] Starting containers..."
+  # Note: --build ensures .env changes are picked up in container environment
+  docker compose --profile nginx --profile ssl down 2>/dev/null || true
   docker compose --profile nginx --profile ssl up -d --build
   
   echo ""
@@ -242,11 +256,12 @@ setup_https() {
   # This is a bit tricky, so we'll use a Python script for complex sed operations
   
   # Actually, let's create a production-ready config
+  local HTTPS_PORT=$(get_port)
   cat > "$NGINX_CONF" << EOF
 # ReverseQR Nginx Server Configuration (HTTPS enabled)
 
 upstream reverseqr_backend {
-    server reverseqr:3000;
+    server reverseqr:${HTTPS_PORT};
     keepalive 64;
 }
 
@@ -318,13 +333,10 @@ EOF
     echo "[*] Updated BASE_URL in .env"
   fi
   
-  # Restart nginx to apply new config
-  echo "[*] Restarting Nginx with HTTPS configuration..."
-  docker compose --profile nginx restart nginx
-  
-  # Restart reverseqr container to pick up new BASE_URL
-  echo "[*] Restarting ReverseQR to apply new BASE_URL..."
-  docker compose restart reverseqr
+  # Rebuild and restart containers to pick up updated .env and nginx config
+  echo "[*] Rebuilding containers with new configuration..."
+  docker compose --profile nginx down 2>/dev/null || true
+  docker compose --profile nginx up -d --build
   
   echo ""
   echo -e "${GREEN}=== HTTPS Setup Complete ===${NC}"
@@ -422,8 +434,9 @@ setup_docker() {
   echo ""
   echo "How would you like to run Docker?"
   echo ""
-  echo -e "  ${GREEN}1)${NC} Localhost only (port 3000) - for testing"
-  echo -e "  ${GREEN}2)${NC} With Nginx + HTTPS (Let's Encrypt)"
+  local DOCKER_PORT=$(get_port)
+  echo -e "  ${GREEN}1)${NC} Localhost only (port ${DOCKER_PORT}) - for testing or if you are managing your reverse proxy yourself"
+  echo -e "  ${GREEN}2)${NC} Fast setup with Nginx + HTTPS (Let's Encrypt)"
   echo ""
   read -p "Enter your choice [1/2]: " DOCKER_MODE
   
@@ -486,9 +499,10 @@ NGINX_EOF
   # Create default server config if it doesn't exist
   if [ ! -f "$SCRIPT_DIR/docker/nginx/conf.d/default.conf" ]; then
     echo "[*] Creating default nginx server config..."
-    cat > "$SCRIPT_DIR/docker/nginx/conf.d/default.conf" << 'CONF_EOF'
+    local NGINX_PORT=$(get_port)
+    cat > "$SCRIPT_DIR/docker/nginx/conf.d/default.conf" << CONF_EOF
 upstream reverseqr_backend {
-    server reverseqr:3000;
+    server reverseqr:${NGINX_PORT};
     keepalive 64;
 }
 
@@ -504,13 +518,13 @@ server {
     location / {
         proxy_pass http://reverseqr_backend;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
         proxy_buffering off;
         
         proxy_read_timeout 86400;
@@ -523,20 +537,24 @@ CONF_EOF
     1)
       echo ""
       echo "[*] Building and starting ReverseQR..."
+      local APP_PORT=$(get_port)
+      docker compose down 2>/dev/null || true
       docker compose up -d --build
       echo ""
       echo -e "${GREEN}=== Docker Setup Complete ===${NC}"
       echo ""
-      echo "ReverseQR is now running at: http://localhost:3000"
+      echo "ReverseQR is now running at: http://localhost:${APP_PORT}"
       ;;
     2)
       setup_https
       ;;
     *)
       echo "Invalid choice, defaulting to localhost mode..."
+      local APP_PORT=$(get_port)
+      docker compose down 2>/dev/null || true
       docker compose up -d --build
       echo ""
-      echo "ReverseQR is now running at: http://localhost:3000"
+      echo "ReverseQR is now running at: http://localhost:${APP_PORT}"
       ;;
   esac
   
@@ -559,7 +577,8 @@ setup_nodejs() {
   # Ask about deployment mode
   echo "How do you want to deploy ReverseQR?"
   echo ""
-  echo -e "  ${GREEN}1)${NC} Local Testing - HTTP only, localhost:3000 (development)"
+  local DEPLOY_PORT=$(get_port)
+  echo -e "  ${GREEN}1)${NC} Local Testing - HTTP only, localhost:${DEPLOY_PORT} (development)"
   echo -e "  ${GREEN}2)${NC} Production - HTTPS with domain name"
   echo ""
   read -p "Enter your choice [1/2]: " DEPLOY_MODE
@@ -587,6 +606,9 @@ setup_nodejs() {
       echo -e "${GREEN}[+] Docker containers stopped.${NC}"
       echo ""
     fi
+  else
+    echo "[*] Docker is not running, skipping Docker cleanup"
+    echo ""
   fi
   
   echo "Detecting system configuration..."
@@ -861,24 +883,26 @@ EOF
   echo ""
   
   if [ "$DEPLOY_LOCAL" = true ]; then
+    local FINAL_PORT=$(get_port)
     echo "✓ Local testing setup complete!"
     echo ""
     echo "You can access ReverseQR at:"
-    echo -e "  ${GREEN}http://localhost:3000${NC}"
+    echo -e "  ${GREEN}http://localhost:${FINAL_PORT}${NC}"
     echo ""
     echo "Service management commands:"
     echo "  sudo systemctl status ${SERVICE_NAME}       # Check status"
     echo "  sudo systemctl restart ${SERVICE_NAME}      # Restart service"
     echo "  sudo journalctl -u ${SERVICE_NAME} -f       # View live logs"
     echo ""
-    echo -e "${YELLOW}Note: This is HTTP only, suitable for local testing.${NC}"
-    echo "To add HTTPS and nginx later, run this script again."
+    echo -e "${YELLOW}Note: This is HTTP only, suitable for local testing or if you are managing your reverse proxy yourself.${NC}"
+    echo "To add HTTPS and nginx automatialy later, run this script again."
     echo ""
   else
     # Production setup - ask about HTTPS
     echo "✓ Node.js service installed!"
     echo ""
-    echo "The server is running on port 3000 (internal, behind nginx)."
+    local NJ_PORT=$(get_port)
+    echo "The server is running on port ${NJ_PORT} (internal, behind nginx)."
     echo ""
     read -p "Would you like to set up HTTPS with nginx and Let's Encrypt now? [Y/n]: " SETUP_HTTPS
     
@@ -886,7 +910,8 @@ EOF
       setup_nodejs_https
     else
       echo ""
-      echo "You can access ReverseQR at: http://localhost:3000"
+      local LOCAL_PORT=$(get_port)
+      echo "You can access ReverseQR at: http://localhost:${LOCAL_PORT}"
       echo ""
       echo -e "${YELLOW}Note: HTTPS is required for file transfers to work over the internet.${NC}"
       echo "Run this script again to set up HTTPS later."
@@ -961,7 +986,7 @@ server {
     server_name $DOMAIN_NAME;
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:$(get_port);
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
