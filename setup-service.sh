@@ -828,13 +828,25 @@ EOF
   echo "[DEBUG] Using npm at: $NPM_PATH"
   
   # Use full path to node so npm script can find it
-  if ! sudo -u "$CURRENT_USER" bash -c "cd '$SCRIPT_DIR' && export PATH='$NODE_DIR:\$PATH' && '$NPM_PATH' install --omit=dev"; then
-    echo -e "${RED}[ERROR] Failed to install npm dependencies.${NC}" >&2
-    echo "Troubleshooting tips:" >&2
-    echo "  - Check npm logs: cat ~/.npm/_logs/*.log" >&2
-    echo "  - Try clearing cache: $NPM_PATH cache clean --force" >&2
-    echo "  - Ensure disk space: df -h" >&2
-    exit 1
+  # If running as root or target user is root, run directly without sudo
+  if [ "$(whoami)" = "$CURRENT_USER" ] || [ "$CURRENT_USER" = "root" ]; then
+    if ! bash -c "cd '$SCRIPT_DIR' && export PATH='$NODE_DIR:\$PATH' && '$NPM_PATH' install --omit=dev"; then
+      echo -e "${RED}[ERROR] Failed to install npm dependencies.${NC}" >&2
+      echo "Troubleshooting tips:" >&2
+      echo "  - Check npm logs: cat ~/.npm/_logs/*.log" >&2
+      echo "  - Try clearing cache: $NPM_PATH cache clean --force" >&2
+      echo "  - Ensure disk space: df -h" >&2
+      exit 1
+    fi
+  else
+    if ! sudo -u "$CURRENT_USER" bash -c "cd '$SCRIPT_DIR' && export PATH='$NODE_DIR:\$PATH' && '$NPM_PATH' install --omit=dev"; then
+      echo -e "${RED}[ERROR] Failed to install npm dependencies.${NC}" >&2
+      echo "Troubleshooting tips:" >&2
+      echo "  - Check npm logs: cat ~/.npm/_logs/*.log" >&2
+      echo "  - Try clearing cache: $NPM_PATH cache clean --force" >&2
+      echo "  - Ensure disk space: df -h" >&2
+      exit 1
+    fi
   fi
   echo -e "${GREEN}[+] Dependencies installed successfully!${NC}"
   
