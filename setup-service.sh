@@ -625,7 +625,7 @@ setup_nodejs() {
   NODE_PATH=""
 
   # If running with sudo, try to get node path from the user's login shell
-  if [ -n "$SUDO_USER" ]; then
+  if [ -n "${SUDO_USER:-}" ]; then
     echo "[DEBUG] Running with sudo, checking original user's login shell..."
     # Use login shell (-l) to load user's .bashrc/.profile which sets up nvm/fnm/etc
     NODE_PATH=$(sudo -u "$SUDO_USER" bash -lc 'which node' 2>/dev/null) || true
