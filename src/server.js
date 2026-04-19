@@ -46,7 +46,7 @@ function parseSize(sizeStr) {
 }
 
 // Configuration
-const BASE_URL = process.env.BASE_URL || 'https://localhost:3000';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const PORT = process.env.PORT || 3000;
 const MAX_FILE_SIZE_BYTES = parseSize(process.env.MAX_FILE_SIZE_BYTES) || 104857600; // 100MB default
 const BODY_SIZE_LIMIT = process.env.BODY_SIZE_LIMIT || '1gb';
