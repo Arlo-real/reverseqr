@@ -37,6 +37,7 @@ body {
   border-radius: 16px;
   box-shadow: var(--shadow-lg);
   padding: 40px;
+  padding-bottom: 80px;
   max-width: 600px;
   width: 100%;
 }
@@ -533,7 +534,7 @@ h1 {
 @media (max-width: 640px) {
   .container {
     padding: 24px;
-    padding-bottom: 80px; /* Space for footer */
+    padding-bottom: 80px;
   }
 
   h1 {

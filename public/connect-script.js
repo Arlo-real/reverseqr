@@ -69,7 +69,7 @@ if (document.readyState === 'loading') {
 
 /**
  * Decode PGP words back to hex code
- * Uses RFC 1751 format with word pairs (first=odd, second=even)
+ * Uses simplified wordlist with one word per hex byte
  * @param {string} input - Connection code or space/dash-separated PGP words
  * @returns {string} Decoded hex code (uppercase)
  * @throws {Error} If a word is unknown or forgotten
@@ -96,51 +96,31 @@ async function decodePgpIfNeeded(input) {
   
   // Try to decode as PGP words
   try {
+    // Create reverse lookup: word -> hex byte
+    const wordToHex = {};
+    for (const [hex, word] of Object.entries(PGP_WORDLIST)) {
+      wordToHex[word.toLowerCase()] = hex;
+    }
+    
     const bytes = [];
     
     for (let i = 0; i < words.length; i++) {
       const word = words[i];
-      let foundByte = null;
-      let expectedParity = null;
+      const hex = wordToHex[word];
       
-      // Search through wordlist to find which byte this word corresponds to
-      for (const [hexByte, wordPair] of Object.entries(PGP_WORDLIST)) {
-        if (!wordPair || wordPair.length !== 2) {
-          throw new Error(`Invalid wordlist entry for ${hexByte}`);
-        }
-        
-        const oddWord = wordPair[0].toLowerCase();
-        const evenWord = wordPair[1].toLowerCase();
-        
-        if (word === oddWord) {
-          foundByte = parseInt(hexByte, 16);
-          expectedParity = 1; // odd byte
-          break;
-        } else if (word === evenWord) {
-          foundByte = parseInt(hexByte, 16);
-          expectedParity = 0; // even byte
-          break;
-        }
-      }
-      
-      if (foundByte === null) {
+      if (hex === undefined) {
         // Word not found - likely forgotten or mistyped
         throw new Error(`Unknown PGP word at position ${i}: "${word}". Word was forgotten or mistyped.`);
       }
       
-      // Verify the byte matches expected parity
-      if ((foundByte % 2) !== expectedParity) {
-        throw new Error(`Invalid word at position ${i}: "${word}" is for ${expectedParity === 1 ? 'odd' : 'even'} bytes.`);
-      }
-      
-      bytes.push(foundByte);
+      bytes.push(parseInt(hex, 16));
     }
     
     // Convert bytes back to hex
     return bytes.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join('');
   } catch (e) {
     // If it's our validation error, throw it; otherwise return original
-    if (e.message.includes('Unknown PGP word') || e.message.includes('Invalid word')) {
+    if (e.message.includes('Unknown PGP word')) {
       throw e;
     }
     return trimmed.toUpperCase();
