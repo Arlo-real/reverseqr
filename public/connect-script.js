@@ -27,13 +27,13 @@ async function displayMaxFileSize() {
     maxFileSize = config.maxFileSize; // Store for validation
     const maxSizeElement = document.getElementById('maxSizeInfo');
     if (maxSizeElement && config.maxFileSizeFormatted) {
-      maxSizeElement.textContent = `(Maximum message size: ${config.maxFileSizeFormatted})`;
+      maxSizeElement.textContent = `Maximum message size: ${config.maxFileSizeFormatted}`;
     }
   } catch (error) {
     console.error('Error fetching max file size:', error);
     const maxSizeElement = document.getElementById('maxSizeInfo');
     if (maxSizeElement) {
-      maxSizeElement.textContent = '(Max size configured on server)';
+      maxSizeElement.textContent = 'Max size configured on server';
     }
   }
 }

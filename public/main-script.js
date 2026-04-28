@@ -32,14 +32,14 @@ let connectionCode = null;
         // Update the maxSizeInfo element
         const maxSizeElement = document.getElementById('maxSizeInfo');
         if (maxSizeElement && config.maxFileSizeFormatted) {
-          maxSizeElement.textContent = `(Maximum message size: ${config.maxFileSizeFormatted})`;
+          maxSizeElement.textContent = `Maximum message size: ${config.maxFileSizeFormatted}`;
         }
       } catch (error) {
         console.warn('Could not fetch max file size from config:', error);
         // Set a default message if fetch fails
         const maxSizeElement = document.getElementById('maxSizeInfo');
         if (maxSizeElement) {
-          maxSizeElement.textContent = '(Max size configured on server)';
+          maxSizeElement.textContent = 'Max size configured on server';
         }
       }
     }

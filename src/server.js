@@ -628,12 +628,14 @@ app.post('/api/message/send', uploadLimiter, checkStorageMiddleware, upload.fiel
     connManager.storeMessage(code, 'connector', messageData);
     
     // Calculate total size for logging
-    // For text messages: ciphertext is base64-encoded (~1.33x original size)
-    // Base64 encodes 3 bytes into 4 characters
+    // For text messages: ciphertext is sent as a binary file (no base64 encoding)
     let totalSize = 0;
-    if (messageType === 'text' && ciphertext) {
-      // Base64 is 4/3 of original size (33% overhead, not 100% like hex)
-      totalSize += Math.ceil(ciphertext.length * 3 / 4);
+    if (messageType === 'text') {
+      // Use the ciphertext file size if it was uploaded
+      const ciphertextFiles = req.files && req.files['ciphertext'];
+      if (ciphertextFiles && ciphertextFiles.length > 0) {
+        totalSize += ciphertextFiles[0].size;
+      }
     }
     const sentFiles = (req.files && req.files['files']) || [];
     if (messageType === 'files') {
@@ -796,11 +798,14 @@ app.post('/api/message/send/main', uploadLimiter, checkStorageMiddleware, upload
     console.log('[SERVER] Message stored, notifying connector');
     
     // Calculate total size for logging
-    // For text messages: ciphertext is base64-encoded (~1.33x original size)
+    // For text messages: ciphertext is sent as a binary file (no base64 encoding)
     let totalSize = 0;
-    if (messageType === 'text' && ciphertext) {
-      // Base64 is 4/3 of original size (33% overhead, not 100% like hex)
-      totalSize += Math.ceil(ciphertext.length * 3 / 4);
+    if (messageType === 'text') {
+      // Use the ciphertext file size if it was uploaded
+      const ciphertextFiles = req.files && req.files['ciphertext'];
+      if (ciphertextFiles && ciphertextFiles.length > 0) {
+        totalSize += ciphertextFiles[0].size;
+      }
     }
     const sentFiles = (req.files && req.files['files']) || [];
     if (messageType === 'files') {

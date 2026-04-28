@@ -9,8 +9,13 @@
 </head>
 <body>
   <div class="container">
-    <h1>ReverseQR</h1>
-    <p class="subtitle">Secure File & Text Sharing</p>
+    <div class="header-with-switch">
+      <div class="header-content">
+        <h1>ReverseQR</h1>
+        <p class="subtitle">Secure File & Text Sharing</p>
+      </div>
+      <a href="/" class="switch-button" title="Switch to receiver mode">Receiver Mode</a>
+    </div>
 
     <div id="error" class="error"></div>
     <div id="success" class="success"></div>
@@ -26,9 +31,9 @@
       </div>
     </div>
 
-    <div id="messageSection" class="message-section" style="display: none;">
-      <div id="keyHashDisplay" class="key-hash-display" style="display: none;"></div>
+    <div id="keyHashDisplay" class="key-hash-display" style="display: none;"></div>
 
+    <div id="messageSection" class="message-section" style="display: none;">
       <div class="section-title">
         <span id="maxSizeInfo">
         </span>
