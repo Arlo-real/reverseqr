@@ -895,6 +895,7 @@ async function sendMessage() {
 
 function displaySentMessages() {
   const messagesList = document.getElementById('messagesList');
+  document.getElementById('messagesSection').style.display = 'block';
   
   // Only display NEW messages that haven't been displayed yet
   for (let i = lastDisplayedSentMessageIndex + 1; i < sentMessages.length; i++) {
@@ -1145,6 +1146,7 @@ async function downloadFile(filename, originalName, iv, hash, fileSize) {
 
 async function displayMessagesFromMain(messages) {
   const messagesList = document.getElementById('messagesList');
+  document.getElementById('messagesSection').style.display = 'block';
 
   for (const msgWrapper of messages) {
     // Handle both direct msg.type and msg.data.type formats
