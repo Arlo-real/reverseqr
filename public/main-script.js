@@ -138,6 +138,11 @@ let connectionCode = null;
         if (qrSection) {
           qrSection.style.display = 'none';
         }
+        // Hide the switch button after connection is established
+        const switchButton = document.querySelector('.switch-button');
+        if (switchButton) {
+          switchButton.style.display = 'none';
+        }
         // Show the send section
         const sendSection = document.getElementById('sendSection');
         if (sendSection) {

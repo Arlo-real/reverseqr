@@ -594,6 +594,11 @@ async function connectToMain() {
     connectedMain = true;
     // Hide the connection section
     document.getElementById('codeInputSection').style.display = 'none';
+    // Hide the switch button after connection is established
+    const switchButton = document.querySelector('.switch-button');
+    if (switchButton) {
+      switchButton.style.display = 'none';
+    }
     // Show the message section
     document.getElementById('messageSection').style.display = 'block';
     // Clear and focus the text input
