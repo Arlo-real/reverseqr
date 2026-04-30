@@ -379,22 +379,22 @@ function setupWebSocket() {
       const data = JSON.parse(event.data);
       console.log('[CONNECTOR WS] onmessage received:', data);
       
-      if (data.type === 'receiver-key-available' && data.initiatorPublicKey) {
-        // Receiver's public key is now available
-        console.log('[CONNECTOR WS] Receiver key available');
-        if (dhKeyPairPending && receiverKeyResolver) {
+      if (data.type === 'initiator-key-available' && data.initiatorPublicKey) {
+        // Initiator's public key is now available
+        console.log('[CONNECTOR WS] Initiator key available');
+        if (dhKeyPairPending && mainKeyResolver) {
           await completeKeyExchange(dhKeyPairPending, data.initiatorPublicKey);
-          receiverKeyResolver();
-          receiverKeyResolver = null;
+          mainKeyResolver();
+          mainKeyResolver = null;
           dhKeyPairPending = null;
         }
       } else if (data.type === 'keys-available' && data.initiatorPublicKey) {
         // Keys were already available when we subscribed
         console.log('[CONNECTOR WS] Keys available');
-        if (dhKeyPairPending && receiverKeyResolver) {
+        if (dhKeyPairPending && mainKeyResolver) {
           await completeKeyExchange(dhKeyPairPending, data.initiatorPublicKey);
-          receiverKeyResolver();
-          receiverKeyResolver = null;
+          mainKeyResolver();
+          mainKeyResolver = null;
           dhKeyPairPending = null;
         }
       } else if (data.type === 'message-available' && data.sender === 'main') {

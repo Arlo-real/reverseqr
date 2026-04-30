@@ -196,7 +196,7 @@ const connManager = new ConnectionManager({
 const dhInstances = new Map();
 
 // Store WebSocket connections (keyed by connection code)
-// Each session can have multiple websocket clients (receiver + connector)
+// Each session can have multiple websocket clients (initiator + connector)
 const wsConnections = new Map();
 
 // Helper to broadcast to all clients in a session
@@ -378,7 +378,7 @@ app.post('/api/session/create', sessionLimiter, async (req, res) => {
     const clientIp = req.ip;
     
     const code = connManager.createConnection({
-      mode: 'receiver',
+      mode: 'initiator',
       initiatorDhPublicKey: initiatorDhPublicKey || null
     });
 
@@ -1183,10 +1183,10 @@ wss.on('connection', (ws, req) => {
               responderPublicKey: session.responderDhPublicKey
             }));
           }
-          // If connector subscribes and receiver's key is available, notify immediately
+          // If connector subscribes and initiator's key is available, notify immediately
           if (ws.role === 'sender' && session.initiatorDhPublicKey) {
             ws.send(JSON.stringify({
-              type: 'receiver-key-available',
+              type: 'initiator-key-available',
               initiatorPublicKey: session.initiatorDhPublicKey
             }));
           }

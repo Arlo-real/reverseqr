@@ -544,7 +544,7 @@ let connectionCode = null;
 
     async function downloadFile(filename, originalName, iv, hash, fileSize) {
       try {
-        console.log('[RECEIVER] Downloading file:', originalName, 'Size:', fileSize);
+        console.log('[INITIATOR] Downloading file:', originalName, 'Size:', fileSize);
         if (!iv) {
           alert('Missing IV for file decryption - file cannot be decrypted');
           return;
