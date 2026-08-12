@@ -16,8 +16,8 @@ services:
     env_file:
       - .env
     volumes:
-      # Persist uploads between restarts
-      - uploads_data:/app/public/uploads:rw
+      # Persist uploads between restarts (outside public/ so files are not served statically)
+      - uploads_data:/app/uploads:rw
     ports:
       # Expose directly when not using nginx
       - "${PORT:-3000}:${PORT:-3000}"

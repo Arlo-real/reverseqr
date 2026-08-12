@@ -8,8 +8,8 @@ reverseqr.service
 *.log
 *.pid
 logs/
-public/uploads/*
-!public/uploads/.gitkeep
+uploads/*
+!uploads/.gitkeep
 dist/
 build/
 .vscode/

@@ -17,14 +17,17 @@ RUN npm install --omit=dev
 COPY src/ ./src/
 COPY public/ ./public/
 
-# Create uploads directory and fix ownership
-RUN mkdir -p /app/public/uploads && \
+# Create uploads directory (outside public/ so it is never served statically) and fix ownership
+RUN mkdir -p /app/uploads && \
     chown -R node:node /app && \
-    chmod 755 /app/public/uploads
+    chmod 755 /app/uploads
 
 # Set environment variables (can be overridden by docker-compose.yml or .env)
 ENV NODE_ENV=production
 ENV PORT=3000
+# Bind to all interfaces inside the container; the container network namespace
+# (and the published-port config) controls external exposure, not this bind.
+ENV HOST=0.0.0.0
 
 # Switch to non-root user
 USER node

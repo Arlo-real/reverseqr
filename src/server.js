@@ -15,8 +15,11 @@ const { encodeToPgp, decodeFromPgp } = require('./pgpWordlist');
 
 const app = express();
 
-// Trust proxy to correctly identify client IP from X-Forwarded-For header (set by nginx)
-// Required for accurate rate limiting when behind a reverse proxy
+// Trust exactly one proxy hop (nginx / cloudflared) so req.ip reflects the real
+// client IP from X-Forwarded-For for accurate rate limiting.
+// IMPORTANT: this is only safe because the app binds to a loopback/internal
+// interface (see HOST below) so the single trusted hop is the reverse proxy or
+// Cloudflare Tunnel — not a directly-reachable client that could spoof the header.
 app.set('trust proxy', 1);
 
 // Parse size strings like "100mb", "1gb", etc. into bytes
@@ -48,12 +51,19 @@ function parseSize(sizeStr) {
 // Configuration
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const PORT = process.env.PORT || 3000;
+// Interface to bind to. Defaults to loopback so the app is only reachable through
+// a local reverse proxy or Cloudflare Tunnel (never directly from the network,
+// which would let clients spoof X-Forwarded-For and bypass per-IP rate limits).
+// Docker sets HOST=0.0.0.0 because the container network namespace isolates it.
+const HOST = process.env.HOST || '127.0.0.1';
 const MAX_FILE_SIZE_BYTES = parseSize(process.env.MAX_FILE_SIZE_BYTES) || 104857600; // 100MB default
-const BODY_SIZE_LIMIT = process.env.BODY_SIZE_LIMIT || '1gb';
+const BODY_SIZE_LIMIT = process.env.BODY_SIZE_LIMIT || '50mb';
 const SESSION_TIMEOUT_MS = parseInt(process.env.SESSION_TIMEOUT_MS || '900000'); // 15 minutes default
 const CLEANUP_INTERVAL_MS = parseInt(process.env.CLEANUP_INTERVAL_MS || '300000'); // 5 minutes default
 const FILE_RETENTION_TIME = parseInt(process.env.FILE_RETENTION_TIME || '30') * 60 * 1000; // Convert minutes to milliseconds
-const UPLOAD_DIR = path.join(__dirname, '../public/uploads');
+// Upload directory lives OUTSIDE public/ so uploaded (encrypted) files are never
+// served by the static middleware. Downloads go only through /api/file/download.
+const UPLOAD_DIR = path.join(__dirname, '../uploads');
 
 // Rate limiting configuration
 const GLOBAL_RATE_LIMIT_WINDOW_MS = parseInt(process.env.GLOBAL_RATE_LIMIT_WINDOW_MS || '60000');
@@ -90,6 +100,28 @@ function logEvent(ip, action, details = '') {
   });
   console.log(`[${timestamp}] ${ip.padEnd(15)} | ${action.padEnd(20)} ${details}`);
 }
+
+// Security headers.
+// These mirror the nginx config so they also apply when the app is run without a
+// reverse proxy in front (e.g. local mode behind a Cloudflare Tunnel). A proxy may
+// set its own copies; duplicates are harmless and the app-level values are safe defaults.
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy',
+    'accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()');
+  // Only advertise HSTS over HTTPS (the client-visible scheme after the proxy/tunnel).
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+  }
+  // No inline scripts anywhere in the app, so script-src can stay strict.
+  res.setHeader('Content-Security-Policy',
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data:; font-src 'self' data:; connect-src 'self' wss: ws:; " +
+    "object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
+  next();
+});
 
 // Middleware
 app.use(express.json({ limit: BODY_SIZE_LIMIT }));
@@ -1095,8 +1127,9 @@ function formatBytes(bytes) {
 
 // ============ START SERVER ============
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, HOST, () => {
   console.log(`ReverseQR server running at ${BASE_URL}`);
+  console.log(`Listening on ${HOST}:${PORT}`);
   console.log(`Connect: ${BASE_URL}/connect`);
   console.log(`\nConfiguration:`);
   console.log(`   • Max file size: ${formatBytes(MAX_FILE_SIZE_BYTES)}`);

@@ -1191,7 +1191,7 @@ async function displayMessagesFromMain(messages) {
           }
           return `
             <div class="file-item-container">
-              <a href="#" class="file-item file-download-link" data-filename="${f.filename}" data-name="${displayName}" data-iv="${f.iv || ''}" data-hash="${f.hash || ''}" data-size="${f.size || 0}" style="cursor: pointer;">${escapeHtml(displayName)} <span class="file-size">(${formatFileSize(f.size)})</span></a>
+              <a href="#" class="file-item file-download-link" data-filename="${escapeHtml(f.filename || '')}" data-name="${escapeHtml(displayName || '')}" data-iv="${escapeHtml(f.iv || '')}" data-hash="${escapeHtml(f.hash || '')}" data-size="${parseInt(f.size) || 0}" style="cursor: pointer;">${escapeHtml(displayName || '')} <span class="file-size">(${formatFileSize(f.size)})</span></a>
             </div>
           `;
         })).then(results => results.join(''));
