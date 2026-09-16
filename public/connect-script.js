@@ -1129,7 +1129,7 @@ async function downloadFile(filename, originalName, iv, hash, fileSize) {
     }
     
     // Create a download link for the decrypted file
-    const blob = new Blob([decryptedBuffer]);
+    const blob = new Blob([decryptedBuffer], { type: 'application/octet-stream' });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
